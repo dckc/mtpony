@@ -85,6 +85,14 @@ class IntExpr is Expr
   fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
     value.string(fmt)
 
+class NounExpr is Expr
+  let name: String
+
+  new create(name': String) =>
+    name = name'
+  fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
+    name.string(fmt)
+
 class SequenceExpr is Expr
   let exprs: Array[Expr val]
 
@@ -110,8 +118,11 @@ class IgnorePatt is Patt
     guardOpt = g
 
   fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
-    "_".string(fmt)
-
+    let gs: String = match guardOpt
+    | let e: Expr val => e.string()
+    else ""
+    end
+    ("_" + gs).string(fmt)
 
 interface MASTNotify
   fun ref apply(result: Expr val) =>
@@ -142,6 +153,15 @@ class MASTStream
 
   fun ref nextInt(): I64 ? =>
     nextByte().i64()
+
+  fun ref nextStr(): String ? =>
+    var ix = nextInt()
+    let out = recover String end
+    while ix > 0 do
+      out.push(nextByte())
+      ix = ix - 1
+    end
+    out
 
   fun atEnd(): Bool =>
     try
@@ -190,30 +210,53 @@ actor MASTDecoder
 
     _log.print("tag:" + t.string())
     match t
-    | "L" => _decodeLiteral()
-    | "P" => try _decodePattern() else return end
+    | "L" => _exprs.push(try _decodeLiteral() else return end)
+    | "P" => _patts.push(try _decodePattern() else return end)
+    | "M" => return // TODO method
+    | "R" => return // TODO matcher
     else
-      _log.print("other: " + t)
+      _exprs.push(try _decodeExpr(t) else return end)
     end
     _decode()
+    try
+      let e = _exprs(_exprs.size() - 1)
+      _log.print("last expr: " + e.string())
+    else None end
+    try
+      let p = _patts(_patts.size() - 1)
+      _log.print("last patt: " + p.string())
+    else None end
 
-  fun ref _decodeLiteral() =>
-    let t = try _stream.nextTag() else return end
+  fun ref _decodeLiteral(): Expr val ? =>
+    let t = _stream.nextTag()
     match t
-    | "I" =>
-      let zz = try _stream.nextInt() else return end
-      _exprs.push(recover IntExpr.from_zz(zz) end)
-    | "N" => _exprs.push(recover SequenceExpr(Array[Expr val]) end)
+    | "I" => let zz = _stream.nextInt()
+             recover IntExpr.from_zz(zz) end
+    | "N" => recover SequenceExpr(Array[Expr val]) end
     else
       _log.print("other literal: " + t)
+      error
     end
     
-  fun ref _decodePattern() ? =>
-    let t = try _stream.nextTag() else return end
+  fun ref _decodeExpr(t: String): Expr val ? =>
+    _log.print("expr tag:" + t)
     match t
-    | "I" => IgnorePatt(_getExpr().maybe())
+    | "N" => let s = _stream.nextStr()
+             _log.print("noun: '" + s + "'")
+             recover NounExpr(s) end
+    else
+      _log.print("other expr: " + t)
+      error
+    end
+    
+  fun ref _decodePattern(): Patt val ? =>
+    let t = _stream.nextTag()
+    match t
+    | "I" => let guard = _getExpr().maybe()
+             recover IgnorePatt(guard) end
     else
       _log.print("other pattern: " + t)
+      error
     end
 
   fun ref _getExpr(): Expr val ? =>
