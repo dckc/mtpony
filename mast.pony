@@ -71,15 +71,47 @@ primitive MAST
 
 
 trait Expr is Stringable
+  fun val maybe(): (Expr val| None) => this
+    
 trait Patt is Stringable
 
 class IntExpr is Expr
   let value: I64
-  new create(i: I64) =>
-    value = i
+
+  new from_zz(zz: I64) =>
+    let sign: I64 = if (zz and 1) == 1 then -1 else 1 end
+    value = (zz / 2) * sign
 
   fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
     value.string(fmt)
+
+class SequenceExpr is Expr
+  let exprs: Array[Expr val]
+
+  new create(exprs': Array[Expr val]) =>
+    exprs = exprs'
+
+  fun val maybe(): (Expr val | None) =>
+    if exprs.size() == 0 then None else this end
+
+  fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
+    var out: String iso = recover String end
+    out.append("{ ")
+    for e in exprs.values() do
+      out.append(e.string(fmt))
+      out.append(";")
+    end
+    out.append(" }")
+    out
+
+class IgnorePatt is Patt
+  let guardOpt: (Expr val| None)
+  new create(g: (Expr val| None)) =>
+    guardOpt = g
+
+  fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
+    "_".string(fmt)
+
 
 interface MASTNotify
   fun ref apply(result: Expr val) =>
@@ -109,9 +141,7 @@ class MASTStream
     recover String.from_utf32(b.u32()) end
 
   fun ref nextInt(): I64 ? =>
-    let zz = nextByte().i64()
-    let sign: I64 = if (zz and 1) == 1 then -1 else 1 end
-    (zz / 2) * sign
+    nextByte().i64()
 
   fun atEnd(): Bool =>
     try
@@ -161,6 +191,7 @@ actor MASTDecoder
     _log.print("tag:" + t.string())
     match t
     | "L" => _decodeLiteral()
+    | "P" => try _decodePattern() else return end
     else
       _log.print("other: " + t)
     end
@@ -170,12 +201,25 @@ actor MASTDecoder
     let t = try _stream.nextTag() else return end
     match t
     | "I" =>
-      let i = try _stream.nextInt() else return end
-      _exprs.push(recover IntExpr(i) end)
+      let zz = try _stream.nextInt() else return end
+      _exprs.push(recover IntExpr.from_zz(zz) end)
+    | "N" => _exprs.push(recover SequenceExpr(Array[Expr val]) end)
     else
-      _log.print("other: " + t)
+      _log.print("other literal: " + t)
     end
     
+  fun ref _decodePattern() ? =>
+    let t = try _stream.nextTag() else return end
+    match t
+    | "I" => IgnorePatt(_getExpr().maybe())
+    else
+      _log.print("other pattern: " + t)
+    end
+
+  fun ref _getExpr(): Expr val ? =>
+    let ix = _stream.nextInt().usize()
+    _exprs(ix)
+
   be _finish() =>
     if finished then
       return
