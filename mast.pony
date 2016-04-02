@@ -70,11 +70,32 @@ primitive MAST
     true
 
 
+class Brackets[I: Stringable #read]
+  let open: String
+  let close: String
+  let sep: String
+
+  new create(open': String, close': String, sep': String) =>
+    open = open'
+    close = close'
+    sep = sep'
+
+  fun box format(items: Array[I] val): String iso^ =>
+    var sep' = ""
+    var out: String iso = recover String end
+    out.append(open)
+    for item in items.values() do
+      out.append(sep')
+      out.append(item.string())
+      sep' = sep
+    end
+    out.append(close)
+    out
+    
+
 trait Expr is Stringable
   fun val maybe(): (Expr val| None) => this
     
-trait Patt is Stringable
-
 class IntExpr is Expr
   let value: I64
 
@@ -85,6 +106,14 @@ class IntExpr is Expr
   fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
     value.string(fmt)
 
+class StrExpr is Expr
+  let value: String
+
+  new create(s: String) =>
+    value = s
+  fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
+    ("\"" + value + "\"").string(fmt) // TODO: real quoting
+
 class NounExpr is Expr
   let name: String
 
@@ -93,24 +122,57 @@ class NounExpr is Expr
   fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
     name.string(fmt)
 
-class SequenceExpr is Expr
-  let exprs: Array[Expr val]
+class CallExpr is Expr
+  let target: Expr val
+  let verb: String
+  let args: Array[Expr val] val
+  let namedArgs: Array[(Expr val, Expr val)] val
 
-  new create(exprs': Array[Expr val]) =>
+  new create(target': Expr val,
+             verb': String,
+             args': Array[Expr val] val,
+             namedArgs': Array[(Expr val, Expr val)] val) =>
+    target = target'
+    verb = verb'
+    args = args'
+    namedArgs = namedArgs'
+
+  fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
+    var out: String iso = recover String end
+    out.append(target.string())
+    out.append(".")
+    out.append(verb)
+    out.append(Brackets[Expr val]("(", ")", ", ").format(args))
+    // TODO: named args
+    out
+
+class SequenceExpr is Expr
+  let exprs: Array[Expr val] val
+
+  new create(exprs': Array[Expr val] val) =>
     exprs = exprs'
 
   fun val maybe(): (Expr val | None) =>
     if exprs.size() == 0 then None else this end
 
   fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
-    var out: String iso = recover String end
-    out.append("{ ")
-    for e in exprs.values() do
-      out.append(e.string(fmt))
-      out.append(";")
+    Brackets[Expr val]("{ ", " }", ";").format(exprs)
+
+trait Patt is Stringable
+
+class FinalPatt is Patt
+  let name: String
+  let guardOpt: (Expr val| None)
+  new create(name': String, g: (Expr val| None)) =>
+    name = name'
+    guardOpt = g
+
+  fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
+    let gs: String = match guardOpt
+    | let e: Expr val => e.string()
+    else ""
     end
-    out.append(" }")
-    out
+    (name + gs).string(fmt)
 
 class IgnorePatt is Patt
   let guardOpt: (Expr val| None)
@@ -123,6 +185,15 @@ class IgnorePatt is Patt
     else ""
     end
     ("_" + gs).string(fmt)
+
+class ListPatt is Patt
+  let patts: Array[Patt val] val
+  new create(patts': Array[Patt val] val) =>
+    patts = patts'
+
+  fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
+    Brackets[Patt val]("[", "]", ", ").format(patts)
+
 
 interface MASTNotify
   fun ref apply(result: Expr val) =>
@@ -232,7 +303,9 @@ actor MASTDecoder
     match t
     | "I" => let zz = _stream.nextInt()
              recover IntExpr.from_zz(zz) end
-    | "N" => recover SequenceExpr(Array[Expr val]) end
+    | "N" => recover SequenceExpr(recover Array[Expr val] end) end
+    | "S" => let s = _stream.nextStr()
+             recover StrExpr(s) end
     else
       _log.print("other literal: " + t)
       error
@@ -241,6 +314,11 @@ actor MASTDecoder
   fun ref _decodeExpr(t: String): Expr val ? =>
     _log.print("expr tag:" + t)
     match t
+    | "C" => let target = _getExpr()
+             let verb = _stream.nextStr()
+             let args = _getExprs()
+             let namedArgs = _getNamedExprs()
+             recover CallExpr(target, verb, args, namedArgs) end
     | "N" => let s = _stream.nextStr()
              _log.print("noun: '" + s + "'")
              recover NounExpr(s) end
@@ -252,8 +330,13 @@ actor MASTDecoder
   fun ref _decodePattern(): Patt val ? =>
     let t = _stream.nextTag()
     match t
+    | "F" => let s = _stream.nextStr()
+             let guard = _getExpr().maybe()
+             recover FinalPatt(s, guard) end
     | "I" => let guard = _getExpr().maybe()
              recover IgnorePatt(guard) end
+    | "L" => let patts = _getPatts()
+             recover ListPatt(patts) end
     else
       _log.print("other pattern: " + t)
       error
@@ -262,6 +345,39 @@ actor MASTDecoder
   fun ref _getExpr(): Expr val ? =>
     let ix = _stream.nextInt().usize()
     _exprs(ix)
+
+  fun ref _getExprs(): Array[Expr val] val ? =>
+    var qty = _stream.nextInt()
+    let out = recover Array[Expr val] end
+    while qty > 0 do
+      out.push(_getExpr())
+      qty = qty - 1
+    end
+    out
+
+  fun ref _getPatt(): Patt val ? =>
+    let ix = _stream.nextInt().usize()
+    _patts(ix)
+
+  fun ref _getPatts(): Array[Patt val] val ? =>
+    var qty = _stream.nextInt()
+    let out = recover Array[Patt val] end
+    while qty > 0 do
+      out.push(_getPatt())
+      qty = qty - 1
+    end
+    out
+
+  fun ref _getNamedExprs(): Array[(Expr val, Expr val)] val ? =>
+    var qty = _stream.nextInt()
+    let out = recover Array[(Expr val, Expr val)] end
+    while qty > 0 do
+      let k = _getExpr()
+      let v = _getExpr()
+      out.push((k, v))
+      qty = qty - 1
+    end
+    out
 
   be _finish() =>
     if finished then
