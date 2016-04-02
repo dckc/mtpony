@@ -17,7 +17,7 @@ actor Main
       log.print("magic size:" + MAST.magic().codepoints().string())
       log.print("file size:" + file.size().string())
       if MAST.decodeMagic(file) then
-        log.print("correct magic!")
+        "" // log.print("correct magic!")
       else
         log.print("bad magic")
         return
@@ -34,7 +34,7 @@ actor Main
     | let f :File =>
       let bs = f.read(1024)
       let qty = bs.size()
-      _log.print("bytes read:" + qty.string())
+      // _log.print("bytes read:" + qty.string())
       _d.feed(consume bs)
       if qty > 0 then
         _reading()
@@ -48,7 +48,7 @@ class GotExpr
     _log = log
 
   fun ref apply(result: Expr val) =>
-    _log.print("got result!")
+    _log.print("got result:" + result.string())
 
 primitive MAST
   fun magic(): String => "Mont\xe0MAST\x00"
@@ -70,8 +70,16 @@ primitive MAST
     true
 
 
-trait Expr
-trait Patt
+trait Expr is Stringable
+trait Patt is Stringable
+
+class IntExpr is Expr
+  let value: I64
+  new create(i: I64) =>
+    value = i
+
+  fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
+    value.string(fmt)
 
 interface MASTNotify
   fun ref apply(result: Expr val) =>
@@ -95,6 +103,15 @@ class MASTStream
       _offset = 0
       nextByte()
     end
+
+  fun ref nextTag(): String ? =>
+    let b = nextByte()
+    recover String.from_utf32(b.u32()) end
+
+  fun ref nextInt(): I64 ? =>
+    let zz = nextByte().i64()
+    let sign: I64 = if (zz and 1) == 1 then -1 else 1 end
+    (zz / 2) * sign
 
   fun atEnd(): Bool =>
     try
@@ -130,33 +147,39 @@ actor MASTDecoder
     feed an empty array to signal end of input.
     """
     _stream.push(data)
-    _log.print("fed: " + _stream.string())
+    // _log.print("fed: " + _stream.string())
     _decode()
 
   be _decode() =>
-    _log.print("decode: " + _stream.string())
+    // _log.print("decode: " + _stream.string())
     if _stream.atEnd() then
       _finish()
       return
     end
-    let t = try
-      _stream.nextByte()
-    else
-      return
-    end
+    let t = try _stream.nextTag() else return end
 
     _log.print("tag:" + t.string())
+    match t
+    | "L" => _decodeLiteral()
+    else
+      _log.print("other: " + t)
+    end
     _decode()
 
+  fun ref _decodeLiteral() =>
+    let t = try _stream.nextTag() else return end
+    match t
+    | "I" =>
+      let i = try _stream.nextInt() else return end
+      _exprs.push(recover IntExpr(i) end)
+    else
+      _log.print("other: " + t)
+    end
+    
   be _finish() =>
     if finished then
       return
     end
     finished = true
-    _log.print("finish")
-    let result = try
-      _exprs.pop()
-    else
-      return
-    end
+    let result = try _exprs.pop() else return end
     _notify(result)
