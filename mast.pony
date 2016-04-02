@@ -15,6 +15,7 @@ actor Main
     try
       let file = OpenFile(FilePath(env.root, env.args(1), caps)) as File
       log.print("magic size:" + MAST.magic().codepoints().string())
+      log.print("file size:" + file.size().string())
       if MAST.decodeMagic(file) then
         log.print("correct magic!")
       else
@@ -33,6 +34,7 @@ actor Main
     | let f :File =>
       let bs = f.read(1024)
       let qty = bs.size()
+      _log.print("bytes read:" + qty.string())
       _d.feed(consume bs)
       if qty > 0 then
         _reading()
@@ -77,20 +79,37 @@ interface MASTNotify
 
 class MASTStream
   let _blocks: Array[Array[U8] val] ref = Array[Array[U8] val]
-  var _block: USize = 0
   var _offset: USize = 0
 
   fun ref push(data: Array[U8] val) =>
     _blocks.push(data)
 
   fun ref nextByte(): U8 ? =>
-    let block = _blocks(_block)
+    if atEnd() then
+      error
+    end
     try
-      block(_offset = _offset + 1)
+      _blocks(0)(_offset = _offset + 1)
     else
-      _block = _block + 1
+      _blocks.shift()
       _offset = 0
       nextByte()
+    end
+
+  fun atEnd(): Bool =>
+    try
+      _blocks(0).size() == 0
+    else
+      false
+    end
+
+  fun string() :String =>
+    try
+      (_offset.string() + " of " + _blocks(0).size().string() +
+       " bytes into 1st of " +
+       _blocks.size().string() + " blocks")
+    else
+      "empty stream"
     end
 
 actor MASTDecoder
@@ -99,6 +118,7 @@ actor MASTDecoder
   let _notify :MASTNotify iso
   let _stream :MASTStream
   let _log: OutStream
+  var finished: Bool = false
 
   new create(log: OutStream, notify: MASTNotify iso) =>
     _notify = consume notify
@@ -110,19 +130,30 @@ actor MASTDecoder
     feed an empty array to signal end of input.
     """
     _stream.push(data)
+    _log.print("fed: " + _stream.string())
     _decode()
 
   be _decode() =>
+    _log.print("decode: " + _stream.string())
+    if _stream.atEnd() then
+      _finish()
+      return
+    end
     let t = try
       _stream.nextByte()
     else
-      _finish()
       return
     end
 
     _log.print("tag:" + t.string())
+    _decode()
 
   be _finish() =>
+    if finished then
+      return
+    end
+    finished = true
+    _log.print("finish")
     let result = try
       _exprs.pop()
     else
