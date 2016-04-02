@@ -146,6 +146,33 @@ class CallExpr is Expr
     // TODO: named args
     out
 
+class DefExpr is Expr
+  let patt: Patt val
+  let exitOpt: (Expr val | None)
+  let expr: Expr val
+
+  new create(patt': Patt val,
+             exitOpt': (Expr val | None),
+             expr': Expr val) =>
+    patt = patt'
+    exitOpt = exitOpt'
+    expr = expr'
+
+  fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
+    var out: String iso = recover String end
+    out.append("def ")
+    out.append(patt.string())
+    match exitOpt
+    | let e: Expr val =>
+        out.append(" exit ")
+        out.append(e.string())
+    else
+      "" // noop
+    end
+    out.append(" := ")
+    out.append(expr.string())
+    out
+
 class SequenceExpr is Expr
   let exprs: Array[Expr val] val
 
@@ -156,9 +183,71 @@ class SequenceExpr is Expr
     if exprs.size() == 0 then None else this end
 
   fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
-    Brackets[Expr val]("{ ", " }", ";").format(exprs)
+    Brackets[Expr val]("{ ", " }", "\n").format(exprs)
+
+class Object is Expr
+  let doc: String
+  let name: Patt val
+  let asExpr: (Expr val | None)
+  let implements: Array[Expr val] val
+  let methods: Array[Expr val] val // TODO: methods
+  // TODO: matchers
+
+  new create(doc': String, name': Patt val,
+             asExpr': (Expr val | None),
+             implements': Array[Expr val] val,
+             methods': Array[Expr val] val) =>
+    doc = doc'
+    name = name'
+    asExpr = asExpr'
+    implements = implements'
+    methods = methods'
+
+  fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
+    let out: String iso = recover String end
+    out.append("object " + name.string())
+    // TODO: asExpr, implements
+    out.append(Brackets[Expr val](" {\n", " }\n", "\n").format(methods))
+    out
+
+class Method is Expr // CHEATING! It's not, really
+  let doc: String
+  let verb: String
+  let params: Array[Patt val] val
+  // let namedParams: Array[(String, Patt val)] val
+  let guardOpt: (Expr val | None)
+  let body: Expr val
+
+  new create(doc': String, verb': String, params': Array[Patt val] val,
+    //namedParams': Array[(String, Patt val)] val,
+    guardOpt': (Expr val | None),
+    body': Expr val) =>
+    doc = doc'
+    verb = verb'
+    params = params'
+    //namedParams = namedParams'
+    guardOpt = guardOpt'
+    body = body'
+
+  fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
+    let out: String iso = recover String end
+    out.append("to " + verb)
+    out.append(Brackets[Patt val]("(", ")", ", ").format(params))
+    // TODO: named params
+    let p = IgnorePatt(None)
+    out.append(p.fmtGuard(guardOpt))
+    out.append(" {\n")
+    out.append(body.string())
+    out.append(" }\n")
+    out
 
 trait Patt is Stringable
+  fun fmtGuard(go: (Expr val | None)): String =>
+    match go
+    | let e: Expr val => " :" + e.string()
+    else
+      ""
+    end
 
 class FinalPatt is Patt
   let name: String
@@ -168,11 +257,7 @@ class FinalPatt is Patt
     guardOpt = g
 
   fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
-    let gs: String = match guardOpt
-    | let e: Expr val => e.string()
-    else ""
-    end
-    (name + gs).string(fmt)
+    (name + fmtGuard(guardOpt)).string(fmt)
 
 class IgnorePatt is Patt
   let guardOpt: (Expr val| None)
@@ -180,11 +265,19 @@ class IgnorePatt is Patt
     guardOpt = g
 
   fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
-    let gs: String = match guardOpt
-    | let e: Expr val => e.string()
-    else ""
-    end
-    ("_" + gs).string(fmt)
+    ("_" + fmtGuard(guardOpt)).string(fmt)
+
+class ViaPatt is Patt
+  let patt: Patt val
+  let test: Expr val
+  new create(patt': Patt val, test': Expr val) =>
+    patt = patt'
+    test = test'
+
+  fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
+    let ps = patt.string()
+    let ts = " ? (" + test.string() + ")"
+    (ps + ts).string(fmt)
 
 class ListPatt is Patt
   let patts: Array[Patt val] val
@@ -283,7 +376,35 @@ actor MASTDecoder
     match t
     | "L" => _exprs.push(try _decodeLiteral() else return end)
     | "P" => _patts.push(try _decodePattern() else return end)
-    | "M" => return // TODO method
+    | "O" => try
+        let doc = _stream.nextStr()
+        let name = _getPatt()
+        let asExpr = _getExpr().maybe()
+        let implements = _getExprs()
+        let methods = _getExprs()
+        let matchers = _getExprs()
+        _exprs.push(recover Object(doc, name, asExpr, implements,
+                                   methods) end)
+      else
+        _log.print("bad object?!")
+        return
+      end
+    | "M" => try
+        let doc = _stream.nextStr()
+        let verb = _stream.nextStr()
+        let params = _getPatts()
+        let npqty = _stream.nextInt()
+        if npqty != 0 then
+          _log.print("TODO! named parameters in methods")
+          error // TODO
+        end
+        let guardOpt = _getExpr().maybe()
+        let body = _getExpr()
+        _exprs.push(recover Method(doc, verb, params, guardOpt, body) end)
+      else
+        _log.print("bad method?!")
+        return
+      end
     | "R" => return // TODO matcher
     else
       _exprs.push(try _decodeExpr(t) else return end)
@@ -319,9 +440,14 @@ actor MASTDecoder
              let args = _getExprs()
              let namedArgs = _getNamedExprs()
              recover CallExpr(target, verb, args, namedArgs) end
+    | "D" => let patt = _getPatt()
+             let exitOpt = _getExpr().maybe()
+             let value = _getExpr()
+             recover DefExpr(patt, exitOpt, value) end
     | "N" => let s = _stream.nextStr()
-             _log.print("noun: '" + s + "'")
              recover NounExpr(s) end
+    | "S" => let exprs = _getExprs()
+             recover SequenceExpr(exprs) end
     else
       _log.print("other expr: " + t)
       error
@@ -330,6 +456,9 @@ actor MASTDecoder
   fun ref _decodePattern(): Patt val ? =>
     let t = _stream.nextTag()
     match t
+    | "A" => let test = _getExpr()
+             let patt = _getPatt()
+             recover ViaPatt(patt, test) end
     | "F" => let s = _stream.nextStr()
              let guard = _getExpr().maybe()
              recover FinalPatt(s, guard) end
