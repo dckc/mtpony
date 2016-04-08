@@ -2,7 +2,11 @@ use "collections"
 
 actor Main
   new create(env: Env) =>
-    env.out.print(Module1.eval().string())
+    // env.out.print("hello!")
+    // env.out.print(Char(97).string())
+    // env.out.print(Int(100).string())
+    let result = Module1.eval()
+    env.out.print(result.string())
 
 type Args is Array[MTObject]
 type NamedArgs is Map[String, MTObject]
@@ -27,14 +31,14 @@ class Exception
     out.append(")")
     out
 
-type Err is (Refused | WrongType | Ejecting | Exception)
+type MTErr is (Refused | WrongType | Ejecting | Exception)
 
 trait MTObject
-  fun ref call(verb: String, args: Args, namedArgs: NamedArgs): (MTObject | Err)
+  fun ref call(verb: String, args: Args, namedArgs: NamedArgs): (MTObject | MTErr)
   fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^
 
 class Null is MTObject
-  fun call(verb: String, args: Args, namedArgs: NamedArgs): (MTObject | Err) =>
+  fun call(verb: String, args: Args, namedArgs: NamedArgs): (MTObject | MTErr) =>
     Refused
   fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
     "null".string()
@@ -44,7 +48,7 @@ class Int is MTObject
   let value: I64
   new create(value': I64) =>
     value = value'
-  fun call(verb: String, args: Args, namedArgs: NamedArgs): (MTObject | Err) =>
+  fun call(verb: String, args: Args, namedArgs: NamedArgs): (MTObject | MTErr) =>
     match (verb, args.size())
     | ("add", 1) => match try args(0) else Monte.null() end
                     | let iobj: Int => Int(value + iobj.value)
@@ -54,7 +58,7 @@ class Int is MTObject
     else
       Refused
     end
-  fun string(fmt: FormatSettings): String iso^ =>
+  fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
     value.string()
 
 class Char is MTObject
@@ -63,7 +67,7 @@ class Char is MTObject
   new create(code': U32) =>
     code = code'
 
-  fun call(verb: String, args: Args, namedArgs: NamedArgs): (MTObject | Err) =>
+  fun call(verb: String, args: Args, namedArgs: NamedArgs): (MTObject | MTErr) =>
     match (verb, args.size())
     | ("add", 1) => match try args(0) else Monte.null() end
                     | let iobj: Int => Char(code + iobj.value.u32())
@@ -73,7 +77,7 @@ class Char is MTObject
     else
       Refused
     end
-  fun string(fmt: FormatSettings): String iso^ =>
+  fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
     // TODO: quoting
     ("'" + String.from_utf32(code) + "'").string()
 
