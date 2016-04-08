@@ -1,7 +1,7 @@
 use "files"
 use "collections"
 
-actor Main
+actor Main2
   let _d: MASTDecoder
   let _log: OutStream
   var _file: (File | None) = None
