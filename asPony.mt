@@ -1,8 +1,4 @@
-import "lib/tubes" =~ [
-    => makeUTF8DecodePump :DeepFrozen,
-    => makeUTF8EncodePump :DeepFrozen,
-    => makePumpTube :DeepFrozen,
-]
+import "lib/codec/utf8" =~ [=> UTF8 :DeepFrozen]
 exports (main)
 
 def asPony(expr) as DeepFrozen:
@@ -45,11 +41,25 @@ def asPony(expr) as DeepFrozen:
         match =="MethodCallExpr":
             def rx := asPony(expr.getReceiver())
             def verb := M.toQuote(expr.getVerb())
-            def args := list(expr.getArgs())
             def namedArgs := map(expr.getNamedArgs())
+            def args := `$verb, ${list(expr.getArgs())}, $namedArgs`
             object call:
+                to canFail():
+                    return true
                 to _printOn(out):
-                    out.print(`($rx).call($verb, ${args}, $namedArgs)`)
+                    if (rx.canFail()):
+                        out.print(`
+    match ($rx)
+    | let obj: MTObject => obj.call($args)
+    | let err: MTErr => err
+    else
+      WrongType // can't happen. assert?
+    end
+`)
+                    else:
+                        out.print(`
+    ($rx).call($args)
+`)
 
         match =="LiteralExpr":
             def v := expr.getValue()
@@ -69,27 +79,39 @@ def asPony(expr) as DeepFrozen:
                 } else {
                     throw(v) })
             object literal:
+                to canFail():
+                    return false
                 to _printOn(out):
                     out.print(mkLit)
 
-            
-def main(argv,
-         => makeStdIn,
-         => makeStdOut) as DeepFrozen:
-    def [name] := ["Module1"] # argv
-    def stdin := makeStdIn() <- flowTo(makePumpTube(makeUTF8DecodePump()))
-    def stdout := makePumpTube(makeUTF8EncodePump())
-    stdout <- flowTo(makeStdOut())
-    def expr := m__quasiParser.fromStr("'a' + 1").expand()
-    traceln(expr)
 
+def main(argv,
+         => makeFileResource,
+         => makeStdOut) as DeepFrozen:
+    def [inf, module, outf] := {
+        escape usage {
+            def [infn, outfn] exit usage := argv
+            def `@module.pony` exit usage := outfn
+            [makeFileResource(infn), module, makeFileResource(outfn)]
+        } catch _ {
+            traceln("Usage: any.mt ModuleName.pony", argv)
+            return 1
+        }
+    }
+
+    def out := [].diverge()
     object printer:
         to print(s):
-            stdout.receive(s)
+            out.push(s)
 
-    printer.print(`
-primitive $name
+    return when (def codeBytes := inf.getContents()) ->
+        def via (UTF8.decode) code := codeBytes
+        def expr := m__quasiParser.fromStr(code).expand()
+        printer.print(`
+primitive $module
 
-  fun eval() =>
-`)
-    asPony(expr)._printOn(printer)
+  fun eval(): (MTObject | MTErr) =>
+    `)
+        asPony(expr)._printOn(printer)
+        outf <- setContents(UTF8.encode("".join(out), null))
+        0
