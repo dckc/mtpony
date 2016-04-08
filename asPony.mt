@@ -12,25 +12,34 @@ def asPony(expr) as DeepFrozen:
         if (exprs.size() == 0):
             return object emptyList:
                 to _printOn(out):
-                    out.print("Monte.emptyList()")
-        def [first] + rest := exprs
-        def f := asPony(first)
-        def r := list(rest)
+                    out.print("Monte.emptyArgs()")
+        def last := asPony(exprs.last())
+        def init := list(exprs.slice(0, exprs.size() - 1))
         return object cons:
             to _printOn(out):
-                out.print(`Monte._listWith($f, $r)`)
+                out.print("Monte.argsWith(")
+                init._printOn(out)
+                out.print(", ")
+                last._printOn(out)
+                out.print(")")
         
     def map(namedExprs):
         if (namedExprs.size() == 0):
             return object emptyList:
                 to _printOn(out):
-                    out.print("Monte.emptyMap()")
-        def [first] + _ := namedExprs.keys()
-        def [n, v] := [asPony(first), asPony(namedExprs[n])]
-        def r := map(namedExprs.slice(1))
+                    out.print("Monte.emptyNamedArgs()")
+        def init := map(namedExprs.slice(0, namedExprs.size() - 1))
+        def last := namedExprs.keys().last()
+        def [n, v] := [asPony(last), asPony(namedExprs[last])]
         return object cons:
             to _printOn(out):
-                out.print(`Monte._mapWith($n, $v, $r)`)
+                out.print(`Monte.namedArgsWith(`)
+                init._printOn(out)
+                out.print(", ")
+                n._printOn(out)
+                out.print(", ")
+                v._printOn(out)
+                out.print(")")
         
     return switch (expr.getNodeName()):
         match =="MethodCallExpr":
@@ -40,23 +49,23 @@ def asPony(expr) as DeepFrozen:
             def namedArgs := map(expr.getNamedArgs())
             object call:
                 to _printOn(out):
-                    out.print(`call($rx, $verb, ${args}, $namedArgs)`)
+                    out.print(`($rx).call($verb, ${args}, $namedArgs)`)
 
         match =="LiteralExpr":
             def v := expr.getValue()
             def mkLit := (
                 if (v =~ n :Void) {
-                    "_theNull()"
+                    "Monte.makeNull()"
                 } else if (v =~ b :Bool) {
-                    `_makeBool($b)`
+                    `Monte.makeBool($b)`
                 } else if (v =~ i :Int) {
-                    `_makeInt("$i")`
+                    `Monte.makeInt("$i")`
                 } else if (v =~ ch :Char) {
-                    `_makeChar(${ch.asInteger()})`
+                    `Monte.char(${ch.asInteger()})`
                 } else if (v =~ d :Double) {
-                    `_makeInt($d)`
+                    `Monte.makeDouble($d)`
                 } else if (v =~ s :Str) {
-                    `_makeStr(${M.toQuote(s)})`  # TODO: quoting
+                    `Monte.makeStr(${M.toQuote(s)})`  # TODO: quoting
                 } else {
                     throw(v) })
             object literal:
@@ -67,6 +76,7 @@ def asPony(expr) as DeepFrozen:
 def main(argv,
          => makeStdIn,
          => makeStdOut) as DeepFrozen:
+    def [name] := ["Module1"] # argv
     def stdin := makeStdIn() <- flowTo(makePumpTube(makeUTF8DecodePump()))
     def stdout := makePumpTube(makeUTF8EncodePump())
     stdout <- flowTo(makeStdOut())
@@ -77,4 +87,9 @@ def main(argv,
         to print(s):
             stdout.receive(s)
 
+    printer.print(`
+primitive $name
+
+  fun eval() =>
+`)
     asPony(expr)._printOn(printer)
