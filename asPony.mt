@@ -84,15 +84,24 @@ def asPony(expr) as DeepFrozen:
                 to _printOn(out):
                     out.print(mkLit)
 
+def compile(codeBytes, printer, modName):
+    return when (codeBytes) ->
+        def via (UTF8.decode) code := codeBytes
+        def expr := m__quasiParser.fromStr(code).expand()
+        printer.print(`
+primitive $modName
 
-def main(argv,
-         => makeFileResource,
-         => makeStdOut) as DeepFrozen:
-    def [inf, module, outf] := {
+  fun eval(): (MTObject | MTErr) =>
+    `)
+        expr._printOn(printer)
+
+
+def main(argv, => makeFileResource) as DeepFrozen:
+    def [inf, outf, modName] := {
         escape usage {
             def [infn, outfn] exit usage := argv
-            def `@module.pony` exit usage := outfn
-            [makeFileResource(infn), module, makeFileResource(outfn)]
+            def `@modName.pony` exit usage := outfn
+            [makeFileResource(infn), makeFileResource(outfn), modName]
         } catch _ {
             traceln("Usage: any.mt ModuleName.pony", argv)
             return 1
@@ -104,14 +113,6 @@ def main(argv,
         to print(s):
             out.push(s)
 
-    return when (def codeBytes := inf.getContents()) ->
-        def via (UTF8.decode) code := codeBytes
-        def expr := m__quasiParser.fromStr(code).expand()
-        printer.print(`
-primitive $module
-
-  fun eval(): (MTObject | MTErr) =>
-    `)
-        asPony(expr)._printOn(printer)
+    when (def out := compile(inf.getContents(), printer, modName)) ->
         outf <- setContents(UTF8.encode("".join(out), null))
         0
