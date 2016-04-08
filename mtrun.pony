@@ -5,8 +5,12 @@ actor Main
     // env.out.print("hello!")
     // env.out.print(Char(97).string())
     // env.out.print(Int(100).string())
-    let result = Module1.eval()
-    env.out.print(result.string())
+    try
+      let result = Module1.eval()
+      env.out.print(result.string())
+    else
+      env.out.print("error!")
+    end
 
 type Args is Array[MTObject]
 type NamedArgs is Map[String, MTObject]
@@ -33,13 +37,13 @@ class Exception
 
 type MTErr is (Refused | WrongType | Ejecting | Exception)
 
-trait MTObject
-  fun ref call(verb: String, args: Args, namedArgs: NamedArgs): (MTObject | MTErr)
+trait MTObject is Stringable
+  fun ref call(verb: String, args: Args, namedArgs: NamedArgs): MTObject ?
   fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^
 
 class Null is MTObject
-  fun call(verb: String, args: Args, namedArgs: NamedArgs): (MTObject | MTErr) =>
-    Refused
+  fun call(verb: String, args: Args, namedArgs: NamedArgs): MTObject ? =>
+    error  // TODO: Refused
   fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
     "null".string()
 
@@ -48,15 +52,15 @@ class Int is MTObject
   let value: I64
   new create(value': I64) =>
     value = value'
-  fun call(verb: String, args: Args, namedArgs: NamedArgs): (MTObject | MTErr) =>
+  fun call(verb: String, args: Args, namedArgs: NamedArgs): MTObject ? =>
     match (verb, args.size())
     | ("add", 1) => match try args(0) else Monte.null() end
                     | let iobj: Int => Int(value + iobj.value)
                     else
-                      WrongType
+                      error // TODO: WrongType
                     end
     else
-      Refused
+      error // TODO: Refused
     end
   fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
     value.string()
@@ -67,15 +71,15 @@ class Char is MTObject
   new create(code': U32) =>
     code = code'
 
-  fun call(verb: String, args: Args, namedArgs: NamedArgs): (MTObject | MTErr) =>
+  fun call(verb: String, args: Args, namedArgs: NamedArgs): MTObject ? =>
     match (verb, args.size())
     | ("add", 1) => match try args(0) else Monte.null() end
                     | let iobj: Int => Char(code + iobj.value.u32())
                     else
-                      WrongType
+                      error // TODO: WrongType
                     end
     else
-      Refused
+      error // TODO: Refused
     end
   fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
     // TODO: quoting

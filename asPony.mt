@@ -68,6 +68,7 @@ def mkCall(expr, scope) as DeepFrozen:
 
 
 def mkScope(seq) as DeepFrozen:
+    def slotVar := `slots${seq.next()}`
     def bindings := [].diverge()
 
     def unify(scope, patt, exit_, expr):
@@ -82,13 +83,15 @@ def mkScope(seq) as DeepFrozen:
                 def value := scope.asPony(expr)
                 return object defExpr:
                     to _printOn(out):
-                        out.print(`_bindings.push(`)
+                        out.print(`$slotVar.push(`)
                         value._printOn(out)
                         out.print(")\n")
             match _:
                 throw("TODO: non-final patterns")
 
     return object scope:
+        to slotDecl():
+            return `let $slotVar: Array[MTObject] ref = Array[MTObject]()`
         to asPony(expr):
             traceln("expr node:", expr.getNodeName())
 
@@ -117,7 +120,7 @@ def mkScope(seq) as DeepFrozen:
                         throw("not in scope: " + name)
                     object noun:
                         to _printOn(out):
-                            out.print(`_slot($slotIx)  // $name$\n`)
+                            out.print(`$slotVar($slotIx)  // $name$\n`)
 
                 match =="LiteralExpr":
                     mkLiteral(expr)
@@ -152,11 +155,13 @@ def main(argv,
         def via (UTF8.decode) code := codeBytes
         def expr := m__quasiParser.fromStr(code).expand()
         printer.print(`
-primitive $module
+class $module
 
   fun eval(): MTObject ? =>
     `)
         def s := mkScope(mkCounter())
-        s.asPony(expr)._printOn(printer)
+        def pexpr := s.asPony(expr)
+        printer.print("    " + s.slotDecl() + "\n")
+        pexpr._printOn(printer)
         outf <- setContents(UTF8.encode("".join(out), null))
         0
