@@ -23,13 +23,13 @@ def mkLiteral(expr) as DeepFrozen:
             out.print(mkLit)
 
 
-def mkCall(expr, scope) as DeepFrozen:
+def mkCall(expr, scope, asPony) as DeepFrozen:
     def list(exprs):
         if (exprs.size() == 0):
             return object emptyList:
                 to _printOn(out):
                     out.print("Monte.emptyArgs()")
-        def last := scope.asPony(exprs.last())
+        def last := asPony(exprs.last(), scope)
         def init := list(exprs.slice(0, exprs.size() - 1))
         return object cons:
             to _printOn(out):
@@ -38,7 +38,7 @@ def mkCall(expr, scope) as DeepFrozen:
                 out.print(", ")
                 last._printOn(out)
                 out.print(")")
-        
+
     def map(namedExprs):
         if (namedExprs.size() == 0):
             return object emptyList:
@@ -46,7 +46,7 @@ def mkCall(expr, scope) as DeepFrozen:
                     out.print("Monte.emptyNamedArgs()")
         def init := map(namedExprs.slice(0, namedExprs.size() - 1))
         def last := namedExprs.keys().last()
-        def [n, v] := [scope.asPony(last), scope.asPony(namedExprs[last])]
+        def [n, v] := [asPony(last, scope), asPony(namedExprs[last], scope)]
 
         return object cons:
             to _printOn(out):
@@ -58,7 +58,7 @@ def mkCall(expr, scope) as DeepFrozen:
                 v._printOn(out)
                 out.print(")")
 
-    def rx := scope.asPony(expr.getReceiver())
+    def rx := asPony(expr.getReceiver(), scope)
     def verb := M.toQuote(expr.getVerb())
     def namedArgs := map(expr.getNamedArgs())
     def args := `$verb, ${list(expr.getArgs())}, $namedArgs`
@@ -67,63 +67,90 @@ def mkCall(expr, scope) as DeepFrozen:
             out.print(`($rx).call($args)`)
 
 
-def mkScope(seq) as DeepFrozen:
+def asPony(expr, scope) as DeepFrozen:
+    traceln("expr node:", expr.getNodeName(), expr)
+
+    return switch (expr.getNodeName()):
+        match =="DefExpr":
+            scope.unify(expr.getPattern(), expr.getExpr(), expr.getExit())
+        match =="AssignExpr":
+            trace(expr._uncall())
+            def [_, verb, [lhs, rhs, span], _] := expr._uncall()
+            def value := asPony(rhs, scope)
+            return object assign:
+                to _printOn(out):
+                    out.print(`${scope[lhs]} = (`)
+                    value._printOn(out)
+                    out.print(")\n")
+
+        match =="SeqExpr":
+            def pexprs := [for e in (expr.getExprs()) asPony(e, scope)]
+            object seq:
+                to _printOn(out):
+                    out.print("(")
+                    for px in (pexprs):
+                        px._printOn(out)
+                        out.print("\n")
+                    out.print(")")
+
+        match =="MethodCallExpr":
+            mkCall(expr, scope, asPony)
+
+        match =="NounExpr":
+            def name := expr.getName()
+            return scope[expr]
+
+        match =="LiteralExpr":
+            mkLiteral(expr)
+
+def mkScope(outer, seq) as DeepFrozen:
     def slotVar := `slots${seq.next()}`
     def bindings := [].diverge()
 
-    def unify(scope, patt, exit_, expr):
-        if (exit_ != null):
-            throw("TODO: exit")
-
-        switch (patt.getNodeName()):
-            match =="FinalPattern":
-                bindings.push(patt.getNoun().getName())
-                # TODO: guard
-                traceln("FinalPattern; bindings now:", bindings)
-                def value := scope.asPony(expr)
-                return object defExpr:
-                    to _printOn(out):
-                        out.print(`$slotVar.push(`)
-                        value._printOn(out)
-                        out.print(")\n")
-            match _:
-                throw("TODO: non-final patterns")
-
     return object scope:
+        to unify(patt, expr, exit_):
+            if (exit_ != null):
+                throw("TODO: exit")
+
+            switch (patt.getNodeName()):
+                match n ? (["FinalPattern", "VarPattern"].contains(n)):
+                    bindings.push(patt.getNoun().getName())
+                    # TODO: guard
+                    traceln("FinalPattern; bindings now:", bindings)
+                    def value := asPony(expr, scope)
+                    return object defExpr:
+                        to _printOn(out):
+                            out.print(`$slotVar.push(`)
+                            value._printOn(out)
+                            out.print(")\n")
+                match _:
+                    throw("TODO: non-final patterns")
+
+        to get(noun):
+            def name := noun.getName()
+            def slotIx := bindings.indexOf(name)
+            if (slotIx < 0):
+                traceln(`NounExpr: $bindings.indexOf($name) == $slotIx`)
+                return outer[noun]
+            return object noun:
+                to _printOn(out):
+                    out.print(`$slotVar($slotIx)`)
+                to lvalue():
+                    return `$slotVar($slotIx)`
+
         to slotDecl():
             return `let $slotVar: Array[MTObject] ref = Array[MTObject]()`
-        to asPony(expr):
-            traceln("expr node:", expr.getNodeName())
 
-            return switch (expr.getNodeName()):
-                match =="DefExpr":
-                    unify(scope, expr.getPattern(),
-                          expr.getExit(), expr.getExpr())
-                match =="SeqExpr":
-                    def pexprs := [for e in (expr.getExprs()) scope.asPony(e)]
-                    object seq:
-                        to _printOn(out):
-                            out.print("(")
-                            for px in (pexprs):
-                                px._printOn(out)
-                                out.print("\n")
-                            out.print(")")
 
-                match =="MethodCallExpr":
-                    mkCall(expr, scope)
+object topScope as DeepFrozen:
+    to get(noun):
+        def name := noun.getName()
+        safeScope[`&&$name`]
+        traceln(`safeScope: $name`)
+        return object noun:
+            to _printOn(out):
+                out.print(`safeScope("$name")`)
 
-                match =="NounExpr":
-                    def name := expr.getName()
-                    def slotIx := bindings.indexOf(name)
-                    traceln(`NounExpr: $bindings.indexOf($name) == $slotIx`)
-                    if (slotIx < 0):
-                        throw("not in scope: " + name)
-                    object noun:
-                        to _printOn(out):
-                            out.print(`$slotVar($slotIx)  // $name$\n`)
-
-                match =="LiteralExpr":
-                    mkLiteral(expr)
 
 def mkCounter() as DeepFrozen:
     var x := 0
@@ -155,12 +182,14 @@ def main(argv,
         def via (UTF8.decode) code := codeBytes
         def expr := m__quasiParser.fromStr(code).expand()
         printer.print(`
+use "collections"
+
 class $module
 
-  fun eval(): MTObject ? =>
+  fun eval(safeScope: Map[String val, MTObject ref]): MTObject ? =>
     `)
-        def s := mkScope(mkCounter())
-        def pexpr := s.asPony(expr)
+        def s := mkScope(topScope, mkCounter())
+        def pexpr := asPony(expr, s)
         printer.print("    " + s.slotDecl() + "\n")
         pexpr._printOn(printer)
         outf <- setContents(UTF8.encode("".join(out), null))

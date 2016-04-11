@@ -2,11 +2,13 @@ use "collections"
 
 actor Main
   new create(env: Env) =>
-    // env.out.print("hello!")
-    // env.out.print(Char(97).string())
-    // env.out.print(Int(100).string())
+    let safeScope: Map[String, MTObject ref] = Map[String, MTObject ref]
+
+    // safeScope.update("simple__quasiParser", Null)  // TODO: prelude?
+    safeScope.update("traceln", TraceLn(env.out))
+
     try
-      let result = Module1.eval()
+      let result = Module1.eval(safeScope)
       env.out.print(result.string())
     else
       env.out.print("error!")
@@ -85,6 +87,44 @@ class Char is MTObject
     // TODO: quoting
     ("'" + String.from_utf32(code) + "'").string()
 
+class Str is MTObject
+  let value: String
+
+  new create(value': String) =>
+    value = value'
+
+  fun call(verb: String, args: Args, namedArgs: NamedArgs): MTObject ? =>
+    error // TODO
+
+  fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
+    // TODO: quoting
+    value.string()
+
+class TraceLn is MTObject
+  let _out: OutStream
+
+  new create(out: OutStream) =>
+    _out = out
+
+  fun call(verb: String, args: Args, namedArgs: NamedArgs): MTObject ? =>
+    match (verb)
+    | "run" =>
+      var sep = ""
+      _out.write("[TRACE: ")
+      for arg in args.values() do
+        _out.write(sep)
+        _out.write(arg.string())
+        sep = ", "
+      end
+      _out.print("]")
+      Null
+    else
+      error  // TODO: refused
+    end
+
+  fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
+    "<traceln>".string()
+
 primitive Monte
   fun emptyArgs(): Args => Args
   fun argsWith(init: Args, last: MTObject): Args =>
@@ -102,3 +142,4 @@ primitive Monte
     Int(value)
 
   fun char(code: U32): MTObject => Char(code)
+  fun makeStr(value: String): MTObject => Str(value)
