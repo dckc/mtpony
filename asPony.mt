@@ -72,7 +72,8 @@ def asPony(expr, scope) as DeepFrozen:
 
     return switch (expr.getNodeName()):
         match =="DefExpr":
-            scope.unify(expr.getPattern(), expr.getExpr(), expr.getExit())
+            def pexpr := asPony(expr.getExpr(), scope)
+            scope.unify(expr.getPattern(), pexpr, expr.getExit())
         match =="AssignExpr":
             trace(expr._uncall())
             def [_, verb, [lhs, rhs, span], _] := expr._uncall()
@@ -108,7 +109,7 @@ def mkScope(outer, seq) as DeepFrozen:
     def bindings := [].diverge()
 
     return object scope:
-        to unify(patt, expr, exit_):
+        to unify(patt, pexpr, exit_):
             if (exit_ != null):
                 throw("TODO: exit")
 
@@ -117,11 +118,10 @@ def mkScope(outer, seq) as DeepFrozen:
                     bindings.push(patt.getNoun().getName())
                     # TODO: guard
                     traceln("FinalPattern; bindings now:", bindings)
-                    def value := asPony(expr, scope)
                     return object defExpr:
                         to _printOn(out):
                             out.print(`$slotVar.push(`)
-                            value._printOn(out)
+                            pexpr._printOn(out)
                             out.print(")\n")
                 match _:
                     throw("TODO: non-final patterns")
@@ -158,19 +158,51 @@ def mkCounter() as DeepFrozen:
             x += 1
             return x
 
-def compile(codeBytes, printer, modName):
+
+def parseModule(code) as DeepFrozen:
+    var body := code.trim()
+    def imported := [].diverge()
+    var exported := []
+    # TODO: use lexer to get proper handling of spaces, ;, ::
+    while (body.trim() =~ `import @matchbind$\n@rest`):
+        def mbExpr := m__quasiParser.fromStr(matchbind)
+        def [_, =="run", [mb2, ==false], _] := mbExpr._uncall()
+        imported.push(mb2)
+        body := rest
+    if (body.trim() =~ `exports(@names)@rest`):
+       exported := [for name in (names.split(",")) name.trim()]
+       body := rest
+    return [imported.snapshot(), exported, body]
+
+
+def compile(codeBytes, printer, modName) as DeepFrozen:
     return when (codeBytes) ->
         def via (UTF8.decode) code := codeBytes
-        def expr := m__quasiParser.fromStr(code).expand()
+
+        def [imported, exported, body] := parseModule(code)
+        traceln("module:", imported, exported)
+        def s := mkScope(topScope, mkCounter())
+        var dep := 0
+        for matchbind in (imported):
+            def [_, =="run", [petname, pattern, _], _] := matchbind._uncall()
+            object depRef:
+                to _printOn(out):
+                    out.print(`dependencies($dep)`)
+            s.unify(pattern, depRef, null)
+            dep += 1
+
+        def expr := m__quasiParser.fromStr(body).expand()
+        def pexpr := asPony(expr, s)
+
         printer.print(`
 use "collections"
 
+type Scope = Map[String val, MTObject ref]
+
 class $modName
 
-  fun eval(safeScope: Map[String val, MTObject ref]): MTObject ? =>
+  fun run(safeScope: Scope, dependencies: Array[MTObject ref] iso): Scope ? =>
     `)
-        def s := mkScope(topScope, mkCounter())
-        def pexpr := asPony(expr, s)
         printer.print("    " + s.slotDecl() + "\n")
         pexpr._printOn(printer)
 
@@ -192,6 +224,6 @@ def main(argv, => makeFileResource) as DeepFrozen:
         to print(s):
             out.push(s)
 
-    when (def out := compile(inf.getContents(), printer, modName)) ->
+    when (compile(inf.getContents(), printer, modName)) ->
         outf <- setContents(UTF8.encode("".join(out), null))
         0
