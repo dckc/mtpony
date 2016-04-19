@@ -2,7 +2,7 @@
 
 (require "monte-runtime.rkt")
 
-(provide _makeList traceln)
+(provide _makeList null true false traceln)
 
 (define _makeList
   (new (class root%
