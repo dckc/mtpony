@@ -38,8 +38,52 @@ def mkCall(expr, scope, asScheme) as DeepFrozen:
                 out.print(" ")
             out.print(")")
 
+
+def mkMethod(expr, scope, asScheme) as DeepFrozen:
+    # TODO: def doc := expr.getDocstring()
+    def verb := expr.getVerb()
+    traceln("mkMethod:", verb)
+    def mScope := scope.subScope()
+    def patts := expr.getPatterns()
+    def args := [for ix => patt in (patts) `_arg$ix` => patt]
+    def bargs := [for arg => patt in (args)
+                  mScope.unify(patt, arg, null)]
+    # TODO: def namedPatts := expr.getNamedPatterns()
+    # TODO: def guard := expr.getResultGuard()
+    def body := asScheme(expr.getBody(), mScope)
+    return object defmethod:
+        to _printOn(out):
+            out.print(`  (define/public ($verb ${" ".join(args.getKeys())})$\n`)
+            out.print(mScope.slotDecl())
+            for b in bargs:
+                b._printOn(out)
+            body._printOn(out)
+            out.print(")\n")
+
+def mkObject(expr, scope, asScheme) as DeepFrozen:
+    # TODO: def doc := expr.getDocstring()
+    def name := expr.getName()
+    def asExpr := expr.getAsExpr()
+    def auditors := expr.getAuditors()
+    def script := expr.getScript()
+    def methods := [for m in (script.getMethods())
+                    mkMethod(m, scope, asScheme)]
+    if (script.getMatchers().size() > 0):
+        throw("TODO: matchers")
+    return object odef:
+        to _printOn(out):
+            traceln("odef:" name)
+            if (asExpr != null):
+                out.print(`; TODO: asExpr $asExpr$\n`)
+            if (auditors.size() > 0):
+                out.print(`;TODO: auditors $auditors$\n`)
+            out.print(`(define $name$\n  (new (class root% (super-new)$\n`)
+            for m in (methods):
+                m._printOn(out)
+            out.print(")))\n")
+
 def asScheme(expr, scope) as DeepFrozen:
-    traceln("expr node:", expr.getNodeName(), expr)
+    traceln("expr node:", expr.getNodeName())
 
     return switch (expr.getNodeName()):
         match =="DefExpr":
@@ -55,15 +99,34 @@ def asScheme(expr, scope) as DeepFrozen:
                     value._printOn(out)
                     out.print(")\n")
 
+        match =="ObjectExpr":
+            mkObject(expr, scope, asScheme)
+
         match =="SeqExpr":
             def pexprs := [for e in (expr.getExprs()) asScheme(e, scope)]
             object seq:
                 to _printOn(out):
-                    out.print("(begin ")
+                    out.print("\n(begin ")
                     for px in (pexprs):
                         px._printOn(out)
                         out.print("\n")
                     out.print(")")
+
+        match =="EscapeExpr":
+            def eScope := scope.subScope()
+            def ej := eScope.temp("(make-ejector)")
+            def u := eScope.unify(expr.getEjectorPattern(), ej, null)
+            def body := asScheme(expr.getBody(), eScope)
+            # TODO: def catchPatt := expr.getCatchPattern()
+            # TODO: def catchExpr := expr.getCatchBody()
+            return object esc:
+                to _printOn(out):
+                    out.print("\n(begin\n")
+                    out.print(eScope.slotDecl())
+                    u._printOn(out)
+                    out.print("(with-handlers []\n")  # TODO
+                    body._printOn(out)
+                    out.print(") )\n")
 
         match =="MethodCallExpr":
             mkCall(expr, scope, asScheme)
@@ -78,32 +141,56 @@ def asScheme(expr, scope) as DeepFrozen:
 
 def mkScope(outer, seq) as DeepFrozen:
     def slotVar := `slots${seq.next()}`
-    def bindings := [].diverge()
+    def bindings := [].asMap().diverge()
 
     return object scope:
+        # TODO: named arg for exit_
         to unify(patt, sexpr, exit_):
+            traceln("unify:", patt.getNodeName())
             if (exit_ != null):
                 throw("TODO: exit")
 
-            switch (patt.getNodeName()):
+            return switch (patt.getNodeName()):
                 match n ? (["FinalPattern", "VarPattern"].contains(n)):
                     def name := patt.getNoun().getName()
-                    bindings.push(name)
+                    bindings[name] := "(void)"
                     # TODO: guard
                     traceln("FinalPattern; bindings now:", bindings)
                     return object defExpr:
                         to _printOn(out):
-                            out.print(`(set! $name `)
+                            out.print(`(let ((_fixme `)
                             sexpr._printOn(out)
-                            out.print(")\n")
+                            out.print(`)) (set! $name _fixme) _fixme)$\n`)
+
+                match =="ListPattern":
+                    def l := scope.temp(sexpr)
+                    def items := [for ix => p in (patt.getPatterns())
+                                  scope.unify(p, `(send $l get $ix)`, exit_)]
+                    object listpat:
+                        to _printOn(out):
+                            for i in (items):
+                                i._printOn(out)
+
+                match =="ViaPattern":
+                    def f := asScheme(patt.getExpr(), scope)
+                    object funcall:
+                        to _printOn(out):
+                            out.print(`(send ($f) run $sexpr $exit_)`)
+                    scope.unify(patt.getPattern(), funcall, exit_)
+
                 match _:
-                    throw("TODO: non-final patterns")
+                    throw(`TODO: pattern: $patt`)
+
+        to temp(sexpr):
+            def t := `_tmp${seq.next()}`
+            bindings[t] := sexpr
+            return t
 
         to get(noun):
             def name := noun.getName()
-            def slotIx := bindings.indexOf(name)
+            def slotIx := bindings.getKeys().indexOf(name)
+            traceln(`NounExpr: ${bindings.getKeys()}.indexOf($name) == $slotIx`)
             if (slotIx < 0):
-                traceln(`NounExpr: $bindings.indexOf($name) == $slotIx`)
                 return outer[noun]
             return object noun:
                 to _printOn(out):
@@ -112,8 +199,12 @@ def mkScope(outer, seq) as DeepFrozen:
                     throw("@@")
 
         to slotDecl():
-            return "\n".join([for name in (bindings)
-                              `(define $name (void))`])
+            return "\n".join([for name => v in (bindings)
+                              `(define $name $v)`]) + "\n\n"
+
+        to subScope():
+            return mkScope(scope, seq)
+
 
 object topScope as DeepFrozen:
     to get(noun):
