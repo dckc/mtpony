@@ -139,15 +139,15 @@ def parseModule(code) as DeepFrozen:
     def imported := [].diverge()
     var exported := []
     # TODO: use lexer to get proper handling of spaces, ;, ::
-    while (body.trim() =~ `import @matchbind$\n@rest`):
-        def mbExpr := m__quasiParser.fromStr(matchbind)
+    while (body.trim() =~ `import @matchbind]@rest`):
+        def mbExpr := m__quasiParser.fromStr(matchbind + "]")
         def [_, =="run", [mb2, ==false], _] := mbExpr._uncall()
         imported.push(mb2)
         body := rest.trim()
-    if (body =~ `exports(@names)$\n@rest`):
+    if (body =~ `exports@spc(@names)$\n@rest`):
        exported := [for name in (names.split(",")) name.trim()]
        body := rest.trim()
-    return [imported.snapshot(), exported, body]
+    return [imported.snapshot(), exported, body + "\n"]
 
 
 def compile(codeBytes, printer, modName) as DeepFrozen:
