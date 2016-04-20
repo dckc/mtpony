@@ -23,12 +23,30 @@
 
 (define (decode-expr port exprs patts)
   (define (go-e e)
-    (printf "@@ go-e: ~a\n" e)
-    (decode-expr port (append exprs (list e)) patts))
+    (printf "@@(goe-e ~a)\n" e)
+    (decode-expr port (append exprs (list e)) patts) )
+  (define (go-p p)
+    (printf "@@(goe-p ~a)\n" p)
+    (decode-expr port exprs (append patts (list p))) )
+
+  (define (next-expr)
+    (list-ref exprs (decode-int port)) )
+
+  (define (decode-pattern port)
+    (let ((ptag (tag (must-read-byte port))))
+      (case ptag
+        [(#\I) (let ((guard (next-expr)))
+                 (go-p `(_ ,guard)))]
+         [else (error (format "pattern tag??? ~a" ptag))]
+         ) ) )
+
   (let ((b (read-byte port)))
     (if (eof-object? b) (values exprs patts)
         (case (tag b)
           [(#\L) (go-e (decode-literal port))]
+          [(#\N) (go-e `(noun ,(decode-str port)))]
+          [(#\P) (go-p (decode-pattern port))]
+          [else (error (format "expr tag??? ~a ~a" b (integer->char b)))]
           ) ) ) )
 
 (define (decode-literal port)
@@ -36,11 +54,10 @@
     [(#\C) `(lit ,(read-char port))]
     [(#\D) (error 'TODO-double)]
     [(#\I) `(lit ,(zz (decode-int port)))]
-    [(#\N) no-expr]
+    [(#\N) 'no-expr]
     [(#\S) `(lit ,(decode-str port))]
+    [else (error 'bad-literal-tag)]
      ) )
-
-(define no-expr (cons '() '()))
 
 (define (decode-int port)
   (define (go shift i)
