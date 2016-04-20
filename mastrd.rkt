@@ -28,10 +28,10 @@
 
 (define (decode-expr port exprs patts)
   (define (go-e e)
-    (printf "@@(go-e ~v)\n" e)
+    ;(printf "(go-e ~v)\n" e)
     (decode-expr port (append exprs (list e)) patts) )
   (define (go-p p)
-    (printf "@@(go-p ~v)\n" p)
+    ;(printf "(go-p ~v)\n" p)
     (decode-expr port exprs (append patts (list p))) )
 
   (define (next-expr)
@@ -49,9 +49,13 @@
   (define (next-named-patts)
     (apply append
            (for/list [(ix (in-range (decode-int port)))]
-             (let ((kw (string->keyword (next-expr)))
-                   (patt (next-patt))
-                   (default (next-expr)))
+             (let* ((kwExpr (next-expr))
+                    (kw (if (and (equal? 'quote (first kwExpr))
+                                 (string? (second kwExpr)))
+                            (string->keyword (second kwExpr))
+                            kwExpr))
+                    (patt (next-patt))
+                    (default (next-expr)))
                (if (eq? 'not-present default)
                    `(,kw ,patt)
                    `(,kw [,patt ,default]))
@@ -70,6 +74,8 @@
         [(#\A) (let ((expr (next-expr))
                      (patt (next-patt)))
                  `(via ,expr ,patt))]
+        [(#\B) (let ((name (string->symbol (decode-str port))))
+                 `(&& ,name))]
         [(#\F) (let ((name (string->symbol (decode-str port)))
                      (guard (next-expr)))
                  `(final ,name ,@(opt "guard" guard)) )]
@@ -85,9 +91,11 @@
   (let ((b (read-byte port)))
     (if (eof-object? b) (list exprs patts)
         (case (tag b)
-          [(#\A) (let ((target (decode-str port)) ; symbol?
+          [(#\A) (let ((target (string->symbol (decode-str port)))
                        (expr (next-expr)))
-                   (go-e `(assign ,target ,expr)))]
+                   (go-e `(set! ,target ,expr)))]
+          [(#\B) (let ((name (string->symbol (decode-str port))))
+                   (go-e `(binding ,name)))]
           [(#\C) (go-e (let ((target (next-expr))
                              (verb (string->symbol (decode-str port)))
                              (args (next-exprs))
@@ -97,6 +105,28 @@
                        (exit (next-expr))
                        (expr (next-expr)))
                    (go-e `(def ,patt ,@(opt "exit" exit) ,expr)))]
+          [(#\E) (let ((escPatt (next-patt))
+                       (escExpr (next-expr))
+                       (catchPatt (next-patt))
+                       (catchExpr (next-expr)))
+                   (go-e `(escape ,escPatt ,escExpr
+                                  #:catch (,catchPatt ,catchExpr))))]
+          [(#\e) (let ((escPatt (next-patt))
+                       (escExpr (next-expr)))
+                   (go-e `(escape ,escPatt ,escExpr)))]
+          [(#\F) (let ((try (next-expr))
+                       (finally (next-expr)))
+                   (go-e `(try ,try #:finally ,finally)))]
+          [(#\Y) (let ((try (next-expr))
+                       (catchPatt (next-patt))
+                       (catchExpr (next-expr)))
+                   (go-e `(try ,try
+                               #:catch (,catchPatt ,catchExpr))))]
+          [(#\H) (go-e `(hide ,(next-expr)))]
+          [(#\I) (let ((cond (next-expr))
+                       (cons (next-expr))
+                       (alt (next-expr))) ; not-present?
+                   (go-e `(if ,cond ,cons ,alt)))]
           [(#\L) (go-e (decode-literal port))]
           [(#\M) (let ((doc (decode-str port))
                        (verb (string->symbol (decode-str port)))
@@ -122,7 +152,7 @@
                             ,@(opt-rep "matchers" matchers))))]
           [(#\N) (go-e (string->symbol (decode-str port)))]
           [(#\P) (go-p (decode-pattern))]
-          [(#\S) (go-e `(begin ,(next-exprs)))]
+          [(#\S) (go-e `(begin ,@(next-exprs)))]
           [else (error (format "expr tag??? ~v ~v" b (integer->char b)))]
           ) ) ) )
 
