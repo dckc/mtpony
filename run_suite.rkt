@@ -23,7 +23,7 @@
   (call-with-input-bytes
    (doctest-MAST test-case)
    (lambda (mast-port)
-     (printf "~A~A: " (doctest-section test-case) (doctest-lineno test-case))
+     (printf "\n\n~A-~A: ~A\n" (doctest-section test-case) (doctest-lineno test-case) (doctest-source test-case))
      (pretty-print (decode-mast mast-port)))))
 
 

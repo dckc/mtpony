@@ -6,24 +6,32 @@
 (provide Monte
          (contract-out
           [monte-expr/c (any/c . -> . boolean?)]
-          [monte-method/c (any/c . -> . boolean?)]))
+          [monte-patt/c (any/c . -> . boolean?)]
+          [monte-method/c (any/c . -> . boolean?)]
+          [monte-matcher/c (any/c . -> . boolean?)]))
 
 (define (monte-expr/c x)
   (redex-match? Monte Expr x))
+(define (monte-patt/c x)
+  (redex-match? Monte Patt x))
 (define (monte-method/c x)
   (redex-match? Monte Method x))
+(define (monte-matcher/c x)
+  (redex-match? Monte Matcher x))
 
 (define-language Monte
-  (Expr ::= Literal Noun MethodCall If Object Sequence Def Hide Catch Finally Escape)
-  (Literal ::= Int Str Double Char)
-  (Int ::= number)
-  (Char ::= (side-condition (name ch any) (term (char? ch))))
-  (Str ::= string)
-  (Double ::= real) ;;@@(side-condition (name x real) (flonum? x)))
+  (Expr ::= Literal Noun MethodCall control-flow Def Assign Binding Object)
+  (control-flow ::= Hide Sequence If Catch Finally Escape)
+  (Literal ::= (literal Lit))
+  (Lit ::=
+       integer
+       string
+       (side-condition (name ch any) (term (char? ch)))
+       (side-condition (name x any) (term (flonum? x))) )
   (Noun ::= variable)
-  (MethodCall ::= (send Expr Verb (Expr ...) ((Expr . => . Expr) ...)))
+  (MethodCall ::= (send Expr Verb Expr ... (Expr . => . Expr) ...))
   (If ::= (if Expr Expr Expr))
-  (Sequence ::= (sequence (Expr ...)))
+  (Sequence ::= (sequence Expr ...))
   (Hide ::= (hide Expr))
   (Catch ::= (try Expr #:catch Patt Expr))
   (Finally ::= (try Expr #:finally Expr))
@@ -31,23 +39,34 @@
           (escape Patt Expr))
   (Def ::= (def Patt #:exit Expr Expr)
     (def Patt Expr))
-  (Object ::= (object Final ;; or Ignore
-                      (Method ...)) ;; (Matcher ...)
-              )
-
+  (Assign ::= (set! variable Expr))
+  (Binding ::= (binding variable))
+  (Object ::=
+          (object ObjectName #:doc string Method ... Matcher ...)
+          (object ObjectName Method ... Matcher ...)
+          )
+  (ObjectName ::= FinalPatt
+              IgnorePatt)
   (Verb ::= string)
   (Method ::=
-          (to Verb (Patt ...) Expr)
-          (to Verb (Patt ...) #:guard Expr Expr)
+          (method Verb (Patt ... (Expr . => . Patt) ...) #:guard Expr Expr)
+          (method Verb (Patt ... (Expr . => . Patt) ...) Expr)
           )
-  
-  (Patt ::= Ignore Final Via)
-  (Ignore ::= (ignore #:guard Expr)
-             (ignore))
-  (Final ::= (final (variable-except _) #:guard Expr)
-             (final (variable-except _)))
-  (Via ::= (via Expr Patt))
-  (Value ::= Int) ;;  Char Str Double Bool UserObj ...
+  (Matcher ::= (match Patt Expr))
 
-  (Env ::= ((Noun Value) ...))
+  (Patt ::= IgnorePatt FinalPatt ViaPatt VarPatt BindingPatt ListPatt)
+  (IgnorePatt ::= (ignore #:guard Expr)
+             (ignore))
+  (FinalPatt ::= (final variable #:guard Expr)
+             (final variable))
+  (VarPatt ::= (var variable #:guard Expr)
+       (var variable))
+  (ViaPatt ::= (via Expr Patt))
+  (BindingPatt ::= (&& variable))
+  (ListPatt ::= (list Patt ...))
 )
+
+(test-equal
+ (redex-match? Monte Patt
+               '(&& broken_8))
+ #t)
