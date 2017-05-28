@@ -1,19 +1,32 @@
 #lang racket
 
 (require racket/pretty)
+(require math/flonum)
+(require redex/reduction-semantics)
 
-(provide decode-mast check-magic decode-literal decode-expr)
+(require "kernel.rkt")
+
+(provide (contract-out
+          [decode-mast (port? . -> . monte-expr/c)]
+          [magic bytes?]))
 
 (define (decode-mast port)
   (check-magic port)
-  (let* ([exprs-patts (decode-expr port '() '())]
+  (let* ([with-spans (version-has-spans (must-read-byte port))]
+          [exprs-patts (decode-expr port with-spans '() '())]
          [exprs (first exprs-patts)]
          [patts (second exprs-patts)])
-    (pretty-print patts)
-    (pretty-print exprs)
+    ;(pretty-print patts)
+    ;(pretty-print exprs)
     (last exprs) ) )
 
-(define magic #"Mont\340MAST\0")
+(define magic #"Mont\340MAST")
+
+(define (version-has-spans version)
+  (case version
+    ((0) #f)
+    ((1) #t)
+    (else (error 'unkown-version))))
 
 (define (check-magic port)
   (let ((actual (read-bytes (bytes-length magic) port)))
@@ -26,13 +39,27 @@
   (let ((b (read-byte port)))
     (if (eof-object? b) (error 'early-eof) b) ) )
 
-(define (decode-expr port exprs patts)
-  (define (go-e e)
+(define (decode-expr port with-spans exprs patts)
+  (define/contract (go-e e)
+    ((or/c monte-expr/c monte-method/c) . -> . list?)
     ;(printf "(go-e ~v)\n" e)
-    (decode-expr port (append exprs (list e)) patts) )
+    (decode-expr port with-spans (append exprs (list e)) patts) )
   (define (go-p p)
     ;(printf "(go-p ~v)\n" p)
-    (decode-expr port exprs (append patts (list p))) )
+    (decode-expr port with-spans exprs (append patts (list p))) )
+
+  (define (next-span)
+    (if with-spans
+        (let ([span-tag (tag (must-read-byte port))]
+              [start-line (decode-int port)]
+              [start-col (decode-int port)]
+              [end-line (decode-int port)]
+              [end-col (decode-int port)])
+          (case span-tag
+            ((#\S #\B) #t)
+            (else (error 'invalid-span-tag))
+            ))
+        #f))
 
   (define (next-expr)
     (list-ref exprs (decode-int port)) )
@@ -41,7 +68,7 @@
   (define (next-named-exprs)
     (apply append
            (for/list [(ix (in-range (decode-int port)))]
-             `(,(string->keyword (next-expr)) ,(next-expr)) ) ) )
+             `(,(next-expr) ,(next-expr)) ) ) )
   (define (next-patt)
     (list-ref patts (decode-int port)) )
   (define (next-patts)
@@ -49,16 +76,12 @@
   (define (next-named-patts)
     (apply append
            (for/list [(ix (in-range (decode-int port)))]
-             (let* ((kwExpr (next-expr))
-                    (kw (if (and (equal? 'quote (first kwExpr))
-                                 (string? (second kwExpr)))
-                            (string->keyword (second kwExpr))
-                            kwExpr))
+             (let* ((name (next-expr))
                     (patt (next-patt))
                     (default (next-expr)))
                (if (eq? 'not-present default)
-                   `(,kw ,patt)
-                   `(,kw [,patt ,default]))
+                   `(,name ,patt)
+                   `(,name [,patt ,default]))
                ))))
 
   (define (opt kw node)
@@ -71,19 +94,26 @@
   (define (decode-pattern)
     (let ((ptag (tag (must-read-byte port))))
       (case ptag
-        [(#\A) (let ((expr (next-expr))
-                     (patt (next-patt)))
+        [(#\A) (let ([expr (next-expr)]
+                     [patt (next-patt)]
+                     [span (next-span)])
                  `(via ,expr ,patt))]
-        [(#\B) (let ((name (string->symbol (decode-str port))))
+        [(#\B) (let ([name (string->symbol (decode-str port))]
+                     [span (next-span)])
                  `(&& ,name))]
-        [(#\F) (let ((name (string->symbol (decode-str port)))
-                     (guard (next-expr)))
+        [(#\F) (let ([name (string->symbol (decode-str port))]
+                     [guard (next-expr)]
+                     [span (next-span)])
                  `(final ,name ,@(opt "guard" guard)) )]
-        [(#\I) (let ((guard (next-expr)))
-                 `(_ ,@(opt "guard" guard)) )]
-        [(#\L) (list->vector (next-patts))]
-        [(#\V) (let ((name (string->symbol (decode-str port)))
-                     (guard (next-expr)))
+        [(#\I) (let ([guard (next-expr)]
+                     [span (next-span)])
+                 `(ignore ,@(opt "guard" guard)) )]
+        [(#\L) (let ([patts (next-patts)]
+                     [span (next-span)])
+                 (list->vector patts))]
+        [(#\V) (let ([name (string->symbol (decode-str port))]
+                     [guard (next-expr)]
+                     [span (next-span)])
                  `(var ,name ,@(opt "guard" guard)) )]
         [else (error (format "pattern tag??? ~v" ptag))]
         ) ) )
@@ -91,80 +121,106 @@
   (let ((b (read-byte port)))
     (if (eof-object? b) (list exprs patts)
         (case (tag b)
-          [(#\A) (let ((target (string->symbol (decode-str port)))
-                       (expr (next-expr)))
+          [(#\A) (let ([target (string->symbol (decode-str port))]
+                       [expr (next-expr)]
+                       [span (next-span)])
                    (go-e `(set! ,target ,expr)))]
-          [(#\B) (let ((name (string->symbol (decode-str port))))
+          [(#\B) (let ([name (string->symbol (decode-str port))]
+                       [span (next-span)])
                    (go-e `(binding ,name)))]
-          [(#\C) (go-e (let ((target (next-expr))
-                             (verb (string->symbol (decode-str port)))
-                             (args (next-exprs))
-                             (kwargs (next-named-exprs)))
-                         `(send ,target ,verb ,@args ,@kwargs) )) ]
-          [(#\D) (let ((patt (next-patt))
-                       (exit (next-expr))
-                       (expr (next-expr)))
+          [(#\C) (go-e (let ([target (next-expr)]
+                             [verb (decode-str port)]
+                             [args (next-exprs)]
+                             [kwargs (next-named-exprs)]
+                             [span (next-span)])
+                         `(send ,target ,verb ,args ,kwargs) )) ]
+          [(#\D) (let ([patt (next-patt)]
+                       [exit (next-expr)]
+                       [expr (next-expr)]
+                       [span (next-span)])
                    (go-e `(def ,patt ,@(opt "exit" exit) ,expr)))]
-          [(#\E) (let ((escPatt (next-patt))
-                       (escExpr (next-expr))
-                       (catchPatt (next-patt))
-                       (catchExpr (next-expr)))
+          [(#\E) (let ([escPatt (next-patt)]
+                       [escExpr (next-expr)]
+                       [catchPatt (next-patt)]
+                       [catchExpr (next-expr)]
+                       [span (next-span)])
                    (go-e `(escape ,escPatt ,escExpr
-                                  #:catch (,catchPatt ,catchExpr))))]
-          [(#\e) (let ((escPatt (next-patt))
-                       (escExpr (next-expr)))
+                                  #:catch ,catchPatt ,catchExpr)))]
+          [(#\e) (let ([escPatt (next-patt)]
+                       [escExpr (next-expr)]
+                       [span (next-span)])
                    (go-e `(escape ,escPatt ,escExpr)))]
-          [(#\F) (let ((try (next-expr))
-                       (finally (next-expr)))
+          [(#\F) (let ([try (next-expr)]
+                       [finally (next-expr)]
+                       [span (next-span)])
                    (go-e `(try ,try #:finally ,finally)))]
-          [(#\Y) (let ((try (next-expr))
-                       (catchPatt (next-patt))
-                       (catchExpr (next-expr)))
+          [(#\Y) (let ([try (next-expr)]
+                       [catchPatt (next-patt)]
+                       [catchExpr (next-expr)]
+                       [span (next-span)])
                    (go-e `(try ,try
-                               #:catch (,catchPatt ,catchExpr))))]
-          [(#\H) (go-e `(hide ,(next-expr)))]
-          [(#\I) (let ((cond (next-expr))
-                       (cons (next-expr))
-                       (alt (next-expr))) ; not-present?
+                               #:catch ,catchPatt ,catchExpr)))]
+          [(#\H) (let ([e (next-expr)]
+                       [span (next-span)])
+                   (go-e `(hide ,e)))]
+          [(#\I) (let ([cond (next-expr)]
+                       [cons (next-expr)]
+                       [alt (next-expr)]
+                       [span (next-span)]) ; not-present?
                    (go-e `(if ,cond ,cons ,alt)))]
-          [(#\L) (go-e (decode-literal port))]
-          [(#\M) (let ((doc (decode-str port))
-                       (verb (string->symbol (decode-str port)))
-                       (patts (next-patts))
-                       (namedPatts (next-named-patts))
-                       (guard (next-expr))
-                       (block (next-expr)))
-                   (go-e `(define/method ,verb ,(append patts namedPatts)
+          [(#\L) (let ([lit (decode-literal port)]
+                       [span (next-span)])
+                   (go-e lit))]
+          [(#\M) (let ([doc (decode-str port)]
+                       [verb (decode-str port)]
+                       [patts (next-patts)]
+                       [namedPatts (next-named-patts)]
+                       [guard (next-expr)]
+                       [block (next-expr)]
+                       [span (next-span)])
+                   (go-e `(to ,verb ,(append patts namedPatts)
                             ,@(opt "guard" guard)
                             ,@(opt-doc doc)
                             ,block)) )]
-          [(#\O) (let ((doc (decode-str port))
-                       (patt (next-patt))
-                       (asExpr (next-expr))
-                       (implements (next-exprs))
-                       (methods (next-exprs))
-                       (matchers (next-exprs)))
-                   (go-e `(define/object ,patt
+          [(#\O) (let ([doc (decode-str port)]
+                       [patt (next-patt)]
+                       [asExpr (next-expr)]
+                       [implements (next-exprs)]
+                       [methods (next-exprs)]
+                       [matchers (next-exprs)]
+                       [span (next-span)])
+                   (go-e `(object ,patt
                             ,@(opt "as" asExpr)
                             ,@(opt-rep "implements" implements)
                             ,@(opt-doc doc)
-                            ,@methods
+                            ,methods
                             ,@(opt-rep "matchers" matchers))))]
-          [(#\N) (go-e (string->symbol (decode-str port)))]
+          [(#\N) (let ([name (decode-str port)]
+                       [span (next-span)])
+                   (go-e (string->symbol name)))]
           [(#\P) (go-p (decode-pattern))]
-          [(#\S) (go-e `(begin ,@(next-exprs)))]
+          [(#\R) (let ([patt (next-patt)]
+                       [block (next-expr)]
+                       [span (next-span)])
+                   (go-e `(match
+                           ,patt
+                           ,block)) )]
+          [(#\S) (let ([exprs (next-exprs)]
+                       [span (next-span)])
+                   (go-e `(sequence ,exprs)))]
           [else (error (format "expr tag??? ~v ~v" b (integer->char b)))]
           ) ) ) )
 
 (define (decode-literal port)
   (case (tag (must-read-byte port))
-    [(#\C) `(quote ,(read-char port))]
-    [(#\D) (error 'TODO-double)]
-    [(#\I) `(quote ,(zz (decode-int port)))]
+    [(#\C) (read-char port)]
+    [(#\D) (floating-point-bytes->real (read-bytes 8 port) #t)]
+    [(#\I) (zz (decode-int port))]
     [(#\N) 'not-present]
-    [(#\S) `(quote ,(decode-str port))]
+    [(#\S) (decode-str port)]
     [else (error 'bad-literal-tag)]
      ) )
+
 
 (define (decode-int port)
   (define (go shift i)
