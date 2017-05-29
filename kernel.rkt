@@ -44,6 +44,7 @@
   (Object ::=
           (object ObjectName #:doc string Method ... Matcher ...)
           (object ObjectName Method ... Matcher ...)
+          (primitive any)
           )
   (ObjectName ::= FinalPatt
               IgnorePatt)
