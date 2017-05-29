@@ -1,8 +1,8 @@
 #lang racket
 
-(provide root% true false null)
+(provide root% mt-null mt-true mt-false)
 (provide _makeList _makeInt _loop _validateFor _makeOrderedSpace)
-(provide traceln)
+(provide List% Int% Str%)
 
 (define root%
   (class object%
@@ -13,25 +13,43 @@
   (class root%
     (super-new)
     ) )
-(define null (new Null%))
+(define mt-null (new Null%))
 
 (define Bool%
   (class root%
     (init value)
     (super-new)
     ) )
-(define true (new Bool% [value #t]))
-(define false (new Bool% [value #t]))
+; ISSUE: (object-name)
+; ... (make-struct-tye-property
+
+(define mt-true (new Bool% [value #t]))
+(define mt-false (new Bool% [value #f]))
+
 
 (define Int%
   (class root%
     (init value)
     (define i value)
     (super-new)
+
+    (define (wrap v) (new Int% [value v]))
+    (define (unwrap o) (send o int-value))
+    ;; ISSUE: this shouldn't be a public method. Make and unwrap function.
+    (define/public (int-value) i)
+
     (define/public (add other)
-      (new Int% [value (+ i (send other int-value))]) )
-    (define/public (int-value)
-      i)
+      (new Int% [value (+ i (unwrap other))]))
+
+    (define/public (belowZero)
+      (if (< i 0) mt-true mt-false))
+
+    (define/public (op__cmp other)
+      (let ([j (unwrap other)])
+        (cond
+          [(< i j) (wrap -1)]
+          [(> i j) (wrap 1)]
+          [else (wrap 0)])))
     ) )
 
 (define-syntax def/fn
@@ -109,9 +127,6 @@
 
 (def/fn (_makeList . items)
   (new List% [members items]))
-
-(def/fn (traceln . items)
-  (printf "TRACE: ~a\n" items))
 
 (def/fn (_loop iterable body)
   (let ((iterator (send iterable _makeIterator))
