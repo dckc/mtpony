@@ -5,19 +5,19 @@
 (provide traceln safeScope)
 
 (define _makeList
-  (new (class root%
+  (new (class* object% (receiver<%>)
          (super-new)
          (define/public (run . args)
            (new List% [members args]) ) )) )
 
 (define _comparer
-  (new (class root%
+  (new (class* object% (receiver<%>)
          (super-new)
          (define/public (lessThan left right)
            (send (send left op__cmp right) belowZero) ))))
 
 (define traceln
-  (new (class root%
+  (new (class* object% (receiver<%>)
          (super-new)
          (define/public (run . args)
            (printf "TRACE ~v\n" args) ) )) )

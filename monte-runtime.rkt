@@ -1,25 +1,49 @@
 #lang racket
 
-(provide root% mt-null mt-true mt-false)
+(provide receiver<%> mt-null mt-true mt-false)
 (provide _makeList _makeInt _loop _validateFor _makeOrderedSpace)
 (provide List% Int% Str%)
 
-(define root%
-  (class object%
+(define receiver<%>
+  (interface ()
+    ;; implies printable<%>?
+    ;; TODO: recv
+    ))
+
+
+(define print-only<%>
+  (interface ()
+    custom-print
+    ))
+(define simple-print
+  (mixin (print-only<%>) (printable<%>)
+    (inherit custom-print)
     (super-new)
-    ) )
+    (define/public (custom-write port)
+      (custom-print port 0))
+    (define/public (custom-display port)
+      (custom-print port 0))))
+
+;; TODO: trait miranda?
 
 (define Null%
-  (class root%
-    (super-new)
-    ) )
+  (simple-print
+   (class* object% (print-only<%> receiver<%>)
+     (super-new)
+     (define/public (custom-print port quasi-depth)
+       (print "null" port))
+     ) ))
 (define mt-null (new Null%))
 
 (define Bool%
-  (class root%
-    (init value)
-    (super-new)
-    ) )
+  (simple-print
+   (class* object% (print-only<%> receiver<%>)
+     (init value)
+     (define _value value) ;; boring
+     (super-new)
+     (define/public (custom-print port quasi-depth)
+       (print _value port))
+     ) ))
 ; ISSUE: (object-name)
 ; ... (make-struct-tye-property
 
@@ -28,36 +52,40 @@
 
 
 (define Int%
-  (class root%
-    (init value)
-    (define i value)
-    (super-new)
+  (simple-print
+   (class* object% (print-only<%> receiver<%>)
 
-    (define (wrap v) (new Int% [value v]))
-    (define (unwrap o) (send o int-value))
-    ;; ISSUE: this shouldn't be a public method. Make and unwrap function.
-    (define/public (int-value) i)
+     (init value)
+     (define i value)
+     (super-new)
 
-    (define/public (add other)
-      (new Int% [value (+ i (unwrap other))]))
+     (define/public (custom-print port quasi-depth)
+       (print i port))
+     (define (wrap v) (new Int% [value v]))
+     (define (unwrap o) (send o int-value))
+     ;; ISSUE: this shouldn't be a public method. Make and unwrap function.
+     (define/public (int-value) i)
 
-    (define/public (belowZero)
-      (if (< i 0) mt-true mt-false))
+     (define/public (add other)
+       (new Int% [value (+ i (unwrap other))]))
 
-    (define/public (op__cmp other)
-      (let ([j (unwrap other)])
-        (cond
-          [(< i j) (wrap -1)]
-          [(> i j) (wrap 1)]
-          [else (wrap 0)])))
-    ) )
+     (define/public (belowZero)
+       (if (< i 0) mt-true mt-false))
+
+     (define/public (op__cmp other)
+       (let ([j (unwrap other)])
+         (cond
+           [(< i j) (wrap -1)]
+           [(> i j) (wrap 1)]
+           [else (wrap 0)])))
+     ) ) )
 
 (define-syntax def/fn
   (syntax-rules ()
     [(def/fn (name arg ...) body)
      (define name
        (new
-        (class root%
+        (class* object% (receiver<%>)
           (super-new)
           (define/public (run arg ...)
             body))))]
@@ -65,7 +93,7 @@
     [(def/fn (name . args) body)
      (define name
        (new
-        (class root%
+        (class* object% (receiver<%>)
           (super-new)
           (define/public (run . args)
             body))))]
@@ -77,39 +105,48 @@
     (new Int% [value i])))
 
 (define Char%
-  (class root%
-    (init value)
-    (define codepoint value)
-    (super-new)
-    (define/public (int-value)
-      codepoint)
-    ) )
+  (simple-print
+   (class* object% (print-only<%> receiver<%>)
+     (init value)
+     (define codepoint value)  ;; @@ISSUE: codepoint or char?
+     (super-new)
+     (define/public (int-value)
+       codepoint)
+     (define/public (custom-print port quasi-depth)
+       (print codepoint port))
+     ) ))
 
 (define (Char i)
   (new Char% [value i]))
 
 (define Double%
-  (class root%
-    (init value)
-    (define d value)
-    (super-new)
-    (define/public (add other)
-      (new Double% [value (+ d (send other double-value))]) )
-    (define/public (double-value)
-      d)
-    ) )
+  (simple-print
+   (class* object% (print-only<%> receiver<%>)
+     (init value)
+     (define d value)
+     (super-new)
+     (define/public (add other)
+       (new Double% [value (+ d (send other double-value))]) )
+     (define/public (double-value)
+       d)
+     (define/public (custom-print port quasi-depth)
+       (print d port))
+     ) ))
 
 (define (Double d)
   (new Double% [value d]))
 
 (define Str%
-  (class root%
-    (init value)
-    (define s value)
-    (super-new)
-    (define/public (string-value)
-      s)
-    ) )
+  (simple-print
+   (class* object% (print-only<%> receiver<%>)
+     (init value)
+     (define s value)
+     (super-new)
+     (define/public (string-value)
+       s)
+     (define/public (custom-print port quasi-depth)
+       (print s port))
+     ) ))
 
 (define (Str s)
   (new Str% [value s]))
@@ -117,7 +154,7 @@
 (define _last last)
 
 (define List%
-  (class root%
+  (class* object% (receiver<%>)
     (init members)  ; TODO: contract on members
     (define xs members)
     (super-new)
@@ -146,15 +183,15 @@
 ; note: defined in mast/prelude/region.mt
 (define _makeOrderedSpace
   (new
-   (class root%
+   (class* object% (receiver<%>)
      (super-new)
      (define/public (op__thru lo hi)
        (new
-        (class root%
+        (class* object% (receiver<%>)
           (super-new)
           (define/public (_makeIterator)
             (new
-             (class root%
+             (class* object% (receiver<%>)
                (define pos lo)
                (super-new)
                (define/public (next ej)

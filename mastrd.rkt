@@ -160,11 +160,13 @@
           [(#\H) (let ([e (next-expr)]
                        [span (next-span)])
                    (go-e `(hide ,e)))]
-          [(#\I) (let ([cond (next-expr)]
-                       [cons (next-expr)]
-                       [alt (next-expr)]
-                       [span (next-span)]) ; not-present?
-                   (go-e `(if ,cond ,cons ,alt)))]
+          [(#\I) (let ([check (next-expr)]
+                       [yes (next-expr)]
+                       [no (next-expr)]
+                       [span (next-span)])
+                   (go-e (if (eq? no 'not-present)
+                             `(if ,check ,yes)  ;; @@test for this case?
+                             `(if ,check ,yes ,no))))]
           [(#\L) (let ([lit (decode-literal port)]
                        [span (next-span)])
                    (go-e lit))]

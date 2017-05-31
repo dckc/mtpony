@@ -1,38 +1,62 @@
 #lang racket
 
+(require "compiling-with-exceptions.rkt")
+
 (require "kernel.rkt")
 (require "doctest-suite.rkt")
 (require "monte-runtime.rkt")
 (require "safeScope.rkt")
 
 (define scope/c (listof pair?))
-(define monte-value/c (lambda (x) (is-a? x root%)))
+(define/contract empty-scope scope/c '())
+(define monte-value/c (lambda (x) (is-a? x receiver<%>)))
 
 (define/contract evaluator%
   (class/c
    (init [scopes (listof scope/c)])
    [run (->m monte-expr/c monte-value/c)]
    [match-bind (->m monte-patt/c monte-value/c void)]
-  )
+   )
   (class object%
     (init scopes)
     (define _scopes scopes)
-    (define _locals '()) ;; @@define/contract scope/c
+    ;;@@(define/contract _locals scope/c empty-scope)
+    (define _locals empty-scope)
 
     (super-new)
+
+    (define (scope-lookup name)
+      (let ([name-val (or (assoc name _locals) (assoc name (first _scopes)))])
+        (if name-val (second name-val) (error 'not-bound))))
+
     (define/public (run expr)
 
       (define (recur e) (send this run e))
-      (define (scope-lookup name)
-        (let ([name-val (or (assoc name _locals) (assoc name (first _scopes)))])
-          (if name-val (second name-val) (error 'not-bound))))
+      (define/return (in-fresh-scope thunk)
+        (set! _scopes (cons _locals _scopes))
+        (set! _locals empty-scope)
+        (try-finally
+         (return (thunk))
+         (begin
+           (set! _locals (first _scopes))
+           (set! _scopes (rest _scopes)))))
 
       (pretty-print expr) ;; @@
 
       (match expr
+
+        ;; sequencing: Lit, Seq
         [`(literal ,(and i (? integer? _))) (new Int% [value i])]
         [`(literal ,(and s (? string? _))) (new Str% [value s])]
 
+        [`(sequence ,@exprs)
+         (let ([result mt-null])
+           (for ([expr exprs])
+             (set! result (recur expr)))
+           result)]
+
+        ;; read-only store (Noun, Binding)
+        ;; TODO: binding
         [(? symbol? noun) (scope-lookup noun)]
 
         [`(def ,lhs ,rhs)
@@ -40,32 +64,41 @@
            (send this match-bind lhs val)
            val)]
 
-        [`(send ,obj-expr ,verb ,args ...) ;; @@ named args
+        ;; read-write store (unguarded patts, Def)...
+        ;; TODO
+        
+        ;; scope introduction (Hide, If)
+        ;; TODO: in-fresh-scope
+        [`(hide ,expr) (in-fresh-scope (lambda () (recur expr)))]
+        
+        [`(if ,test ,consequent ,alt)
+         (let* ([test-val (recur test)]
+                [branch (cond
+                          [(eq? test-val mt-true) consequent]
+                          [(eq? test-val mt-false) alt]
+                          [else (raise-argument-error 'if-test "Bool" test-val)])])
+           (in-fresh-scope (lambda () (recur branch))))]
+
+        ;; call contexts and closure (Obj, Call, guards)
+        ;; TODO: Obj, guards
+        [`(send ,obj-expr ,verb ,args ...) ;; @@TODO: named args
          (let ([obj (recur obj-expr)]
                [method-name (string->symbol verb)]
                [params (map recur args)])
            (apply dynamic-send obj method-name params))]
 
-        [`(if ,test ,consequent ,alt)
-         (let ([test-val (recur test)])
-           (cond
-             [(eq? test-val mt-true) (recur consequent)]
-             [(eq? test-val mt-false) (recur alt)]
-             [else (raise-argument-error 'if-test "Bool" test-val)]))]
+        ;; continuations (Try, Finally, Escape).
+        ;; TODO
 
-        [`(sequence ,@exprs)
-         (let ([result mt-null])
-           (for ([expr exprs])
-             (set! result (recur expr)))
-           result)]
-        [else (error 'not-implemented)]
+
+        [else (error "@@not-implemented: ~A" expr)]
         )
       )
     (define/public (match-bind patt val)  ;; TODO: guard
       (match patt
-        (`(final ,name)
+        [`(final ,name)
          (set! _locals `((,name ,val) . ,_locals)) ;; TODO: slots, bindings
-         )
+         ]
         )
       )
     )
