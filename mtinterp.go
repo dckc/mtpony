@@ -4,7 +4,6 @@ import "fmt"
 import "strings"
 import "errors"
 
-
 type Object interface {
 	recv(verb string, args []Object, nargs []NamedArg) (reply Object, err error)
 }
@@ -43,8 +42,9 @@ type ObjectExpr struct {
 }
 type UserObject struct {
 	scopes []map[string]Object
-	code *ObjectExpr
+	code   *ObjectExpr
 }
+
 func (self *UserObject) String() string {
 	return fmt.Sprintf("<%v>", self.code.name)
 }
@@ -52,11 +52,11 @@ func (self *UserObject) String() string {
 func (self *UserObject) recv(verb string, args []Object, nargs []NamedArg) (reply Object, err error) {
 	arity := len(args)
 	for _, meth := range self.code.methods {
-		if (arity == len(meth.params) && meth.verb == verb) {
+		if arity == len(meth.params) && meth.verb == verb {
 			e := EvalCtx{make(map[string]Object), self.scopes}
 			for px, param := range meth.params {
 				err := e.matchBind(param, args[px])
-				if (err != nil) {
+				if err != nil {
 					return nil, err
 				}
 			}
@@ -87,7 +87,6 @@ func printMethods(sep string, items ...Method) string {
 	}
 	return strings.Join(parts, sep)
 }
-
 
 func (oe *ObjectExpr) String() string {
 	return fmt.Sprintf("object %s {\n  %s\n}", oe.name, printMethods("\n  ", oe.methods...))
@@ -132,18 +131,19 @@ type IntExpr struct {
 type IntObj struct {
 	value int // TODO: bignum
 }
+
 func (it *IntObj) recv(verb string, args []Object, nargs []NamedArg) (reply Object, err error) {
 	switch {
 	case verb == "add" && len(args) == 1:
 		that, err := unwrapInt(args[0])
-		if (err != nil) {
+		if err != nil {
 			return nil, err
 		}
 		return &IntObj{it.value + that}, nil
 
 	case verb == "subtract" && len(args) == 1:
 		that, err := unwrapInt(args[0])
-		if (err != nil) {
+		if err != nil {
 			return nil, err
 		}
 		return &IntObj{it.value - that}, nil
@@ -159,11 +159,9 @@ func unwrapInt(obj Object) (int, error) {
 	return 0, errors.New("@@not an int")
 }
 
-
 func (i *IntExpr) String() string {
 	return fmt.Sprintf("%d", i.value)
 }
-
 
 type Evaluator interface {
 	run(expr Expr) (Object, error)
@@ -181,29 +179,28 @@ func (ctx EvalCtx) run(expr Expr) (Object, error) {
 		return &IntObj{it.value}, nil
 	case *NounExpr:
 		value, ok := ctx.locals[it.name]
-		if(ok) {
+		if ok {
 			return value, nil
 		}
 		return nil, errors.New("@@not bound: " + it.name)
 	case *CallExpr:
 		rx, err := ctx.run(it.target)
-		if (err != nil) {
+		if err != nil {
 			return nil, err
 		}
 		params := make([]Object, len(it.args))
 		for ix, arg := range it.args {
 			params[ix], err = ctx.run(arg)
-			if (err != nil) {
+			if err != nil {
 				return nil, err
 			}
 		}
 		return rx.recv(it.verb, params, []NamedArg{})
 
 	case *ObjectExpr:
-		// TODO: bind it.name in its scope(s)
 		obj := UserObject{ctx.scopes, it}
 		err := ctx.matchBind(it.name, &obj)
-		if (err != nil) {
+		if err != nil {
 			return nil, err
 		}
 		return &obj, nil
@@ -211,8 +208,7 @@ func (ctx EvalCtx) run(expr Expr) (Object, error) {
 	return nil, errors.New(fmt.Sprintf("@@eval not implemented for %v", expr))
 }
 
-
-func (ctx *EvalCtx) matchBind(patt Pattern, specimen Object) (error) {
+func (ctx *EvalCtx) matchBind(patt Pattern, specimen Object) error {
 	// fmt.Printf("matchBind(%v, %v)\n", patt, specimen)
 	switch it := patt.(type) {
 	case *FinalPatt:
