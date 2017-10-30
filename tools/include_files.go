@@ -28,7 +28,7 @@ func main() {
 			out.Write([]byte("var " + strings.TrimSuffix(f.Name(), ext) + " = []byte{\n\t"))
 			content, _ := ioutil.ReadFile(f.Name())
 			for ix, b := range content {
-				if b < 128 && unicode.IsGraphic(rune(b)) {
+				if b < 128 && unicode.IsGraphic(rune(b)) && b != '\\' && b != '\'' {
 					out.Write([]byte(fmt.Sprintf("'%c', ", b)))
 				} else {
 					out.Write([]byte(fmt.Sprintf("0x%02x, ", b)))
