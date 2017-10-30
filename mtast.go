@@ -58,7 +58,7 @@ type FinalPatt struct {
 
 func (fp *FinalPatt) String() string {
 	if fp.guard != nil {
-		panic("not implemented")
+		return fmt.Sprintf("%v :%v", fp.name, fp.guard)
 	}
 	return fp.name
 }
@@ -97,6 +97,14 @@ func (m Method) String() string {
 func (ce *CallExpr) String() string {
 	return fmt.Sprintf("%s.%s(%s)", ce.target, ce.verb,
 		printExprs(", ", ce.args...))
+}
+
+func (self *DefExpr) String() string {
+	if self.exit == nil {
+		return fmt.Sprintf("def %s := %s", self.patt, self.expr)
+	} else {
+		return fmt.Sprintf("def %s exit %s := %s", self.patt, self.exit, self.expr)
+	}
 }
 
 func (e *NounExpr) String() string {
