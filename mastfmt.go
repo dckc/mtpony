@@ -12,7 +12,7 @@ import (
 
 const MAGIC = "Mont\xe0MAST"
 
-func load(r io.Reader) (Expr, error) {
+func Load(r io.Reader) (Expr, error) {
 	input := bufio.NewReader(r)
 
 	checkMagic := func () error {

@@ -2,7 +2,7 @@ package monte
 
 import "fmt"
 
-func ExampleLetRec() {
+func ExampleObjectExpr() {
 	// Output:
 	// object x {
 	//   method a(n) {

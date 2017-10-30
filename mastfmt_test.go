@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func ExampleMASTMagic() {
+func ExampleMAGIC() {
 	// Output:
 	// expr: <nil> err: EOF
 	// expr: <nil> err: unexpected EOF
@@ -15,12 +15,14 @@ func ExampleMASTMagic() {
 	inputs := []string{MAGIC, "short", "The Spanish Inquisition"}
 	for _, s := range inputs {
 		r := strings.NewReader(s)
-		expr, err := load(r)
+		expr, err := Load(r)
 		fmt.Printf("expr: %v err: %v\n", expr, err)
 	}
 }
 
-func ExampleMASTSimple() {
+//go:generate go run tools/includetxt.go
+
+func ExampleLoad() {
 	// Output:
 	// expr: def ITERATIONS :Int := 170 err: <nil>
 
@@ -33,6 +35,6 @@ func ExampleMASTSimple() {
 		'D', 0x00, 0x01, 0x02, 'B', 0x01, 0x00, 0x02, 0x1a,
 	}
 	r := bytes.NewReader(input)
-	expr, err := load(r)
+	expr, err := Load(r)
 	fmt.Printf("expr: %v err: %v\n", expr, err)
 }
