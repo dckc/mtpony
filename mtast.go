@@ -70,9 +70,8 @@ type IgnorePatt struct {
 func (pat *IgnorePatt) String() string {
 	if pat.guard == nil {
 		return "_"
-	} else {
-		return fmt.Sprintf("_ :%v", pat.guard)
 	}
+	return fmt.Sprintf("_ :%v", pat.guard)
 }
 
 func printExprs(sep string, items ...Expr) string {
@@ -106,23 +105,22 @@ func (m Method) String() string {
 		printPatts(", ", m.params...), m.body)
 }
 
-func (ce *CallExpr) String() string {
-	return fmt.Sprintf("%s.%s(%s)", ce.target, ce.verb,
-		printExprs(", ", ce.args...))
+func (expr *CallExpr) String() string {
+	return fmt.Sprintf("%s.%s(%s)", expr.target, expr.verb,
+		printExprs(", ", expr.args...))
 }
 
-func (self *DefExpr) String() string {
-	if self.exit == nil {
-		return fmt.Sprintf("def %s := %s", self.patt, self.expr)
-	} else {
-		return fmt.Sprintf("def %s exit %s := %s", self.patt, self.exit, self.expr)
+func (expr *DefExpr) String() string {
+	if expr.exit == nil {
+		return fmt.Sprintf("def %s := %s", expr.patt, expr.expr)
 	}
+	return fmt.Sprintf("def %s exit %s := %s", expr.patt, expr.exit, expr.expr)
 }
 
-func (e *NounExpr) String() string {
-	return e.name
+func (expr *NounExpr) String() string {
+	return expr.name
 }
 
-func (i *IntExpr) String() string {
-	return fmt.Sprintf("%d", i.value)
+func (expr *IntExpr) String() string {
+	return fmt.Sprintf("%d", expr.value)
 }

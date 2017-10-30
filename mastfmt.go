@@ -4,12 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	// "log"
 )
 
+// MAGIC marks a Monte AST file.
 const MAGIC = "Mont\xe0MAST"
 
 func Load(r io.Reader) (Expr, error) {
@@ -22,10 +22,8 @@ func Load(r io.Reader) (Expr, error) {
 		}
 		if bytes.Equal(actual, []byte(MAGIC)) {
 			return nil
-		} else {
-			return errors.New(
-				fmt.Sprintf("@@expected %q; got %q", MAGIC, actual))
 		}
+		return fmt.Errorf("@@expected %q; got %q", MAGIC, actual)
 	}
 	if err := checkMagic(); err != nil {
 		return nil, err
@@ -36,16 +34,16 @@ func Load(r io.Reader) (Expr, error) {
 		return nil, err
 	}
 
-	ctx := MASTContext{[]Expr{}, []Pattern{}}
+	ctx := context{[]Expr{}, []Pattern{}}
 	return ctx.decode(input, version)
 }
 
-type MASTContext struct {
+type context struct {
 	exprs []Expr
 	patts []Pattern
 }
 
-func (self *MASTContext) decode(input *bufio.Reader, version byte) (Expr, error) {
+func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 	nextStr := func() (string, error) {
 		size, err := binary.ReadUvarint(input)
 		if err != nil {
@@ -77,12 +75,12 @@ func (self *MASTContext) decode(input *bufio.Reader, version byte) (Expr, error)
 		if err != nil {
 			return nil, err
 		}
-		return self.exprs[ix], nil
+		return ctx.exprs[ix], nil
 	}
 
 	pushExpr := func(e Expr) {
 		// log.Printf("pushExpr(%v)\n", e)
-		self.exprs = append(self.exprs, e)
+		ctx.exprs = append(ctx.exprs, e)
 	}
 
 	nextPatt := func() (Pattern, error) {
@@ -90,12 +88,12 @@ func (self *MASTContext) decode(input *bufio.Reader, version byte) (Expr, error)
 		if err != nil {
 			return nil, err
 		}
-		return self.patts[ix], nil
+		return ctx.patts[ix], nil
 	}
 
 	pushPatt := func(p Pattern) {
 		// log.Printf("pushPatt(%v)\n", p)
-		self.patts = append(self.patts, p)
+		ctx.patts = append(ctx.patts, p)
 	}
 
 	loadLiteral := func() error {
@@ -114,12 +112,10 @@ func (self *MASTContext) decode(input *bufio.Reader, version byte) (Expr, error)
 			}
 			pushExpr(&IntExpr{value})
 		default:
-			return errors.New(fmt.Sprintf("@@literal tag not implemented: %q", tag))
+			return fmt.Errorf("@@literal tag not implemented: %q", tag)
 		}
-		if err = skipSpan(); err != nil {
-			return err
-		}
-		return nil
+		err = skipSpan()
+		return err
 	}
 
 	loadPattern := func() error {
@@ -146,12 +142,10 @@ func (self *MASTContext) decode(input *bufio.Reader, version byte) (Expr, error)
 			}
 			pushPatt(&FinalPatt{name, guard})
 		default:
-			return errors.New(fmt.Sprintf("@@pattern tag not implemented: %q", tag))
+			return fmt.Errorf("@@pattern tag not implemented: %q", tag)
 		}
-		if err = skipSpan(); err != nil {
-			return err
-		}
-		return nil
+		skipSpan()
+		return err
 	}
 
 	getExprs := func() ([]Expr, error) {
@@ -166,7 +160,7 @@ func (self *MASTContext) decode(input *bufio.Reader, version byte) (Expr, error)
 			if err != nil {
 				return nil, err
 			}
-			out[ox] = self.exprs[ix]
+			out[ox] = ctx.exprs[ix]
 		}
 		return out, nil
 	}
@@ -184,9 +178,9 @@ func (self *MASTContext) decode(input *bufio.Reader, version byte) (Expr, error)
 	for true {
 		tag, err := input.ReadByte()
 		if err == io.EOF {
-			last := len(self.exprs) - 1
+			last := len(ctx.exprs) - 1
 			if last >= 0 {
-				return self.exprs[last], nil
+				return ctx.exprs[last], nil
 			}
 		}
 		if err != nil {
@@ -250,9 +244,9 @@ func (self *MASTContext) decode(input *bufio.Reader, version byte) (Expr, error)
 			}
 			pushExpr(&CallExpr{rx, verb, args})
 		default:
-			return nil, errors.New(fmt.Sprintf("@@tag not implemented: %q", tag))
+			return nil, fmt.Errorf("@@tag not implemented: %q", tag)
 		}
 	}
 
-	return nil, errors.New(fmt.Sprintf("@@TODO"))
+	return nil, fmt.Errorf("@@TODO")
 }

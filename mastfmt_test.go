@@ -30,4 +30,11 @@ func ExampleLoad() {
 	r := bytes.NewReader(input)
 	expr, err := Load(r)
 	fmt.Printf("expr: %v err: %v\n", expr, err)
+
+	{
+		input := []byte(brot2)
+		r := bytes.NewReader(input)
+		expr, err := Load(r)
+		fmt.Printf("expr: %v err: %v\n", expr, err)
+	}
 }

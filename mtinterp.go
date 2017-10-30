@@ -10,9 +10,9 @@ type Evaluator interface {
 	matchBind(patt Pattern, val Object) error // TODO: ejector
 }
 
-type EvalCtx struct {
+type evalCtx struct {
 	locals map[string]Object
-	parent *EvalCtx
+	parent *evalCtx
 }
 
 type Object interface {
@@ -24,19 +24,19 @@ type NamedArg struct {
 }
 
 type UserObject struct {
-	env  *EvalCtx
+	env  *evalCtx
 	code *ObjectExpr
 }
 
-func (self *UserObject) String() string {
-	return fmt.Sprintf("<%v>", self.code.name)
+func (obj *UserObject) String() string {
+	return fmt.Sprintf("<%v>", obj.code.name)
 }
 
-func (self *UserObject) recv(verb string, args []Object, nargs []NamedArg) (reply Object, err error) {
+func (obj *UserObject) recv(verb string, args []Object, nargs []NamedArg) (reply Object, err error) {
 	arity := len(args)
-	for _, meth := range self.code.methods {
+	for _, meth := range obj.code.methods {
 		if arity == len(meth.params) && meth.verb == verb {
-			e := EvalCtx{make(map[string]Object), self.env}
+			e := evalCtx{make(map[string]Object), obj.env}
 			for px, param := range meth.params {
 				err := e.matchBind(param, args[px])
 				if err != nil {
@@ -50,11 +50,11 @@ func (self *UserObject) recv(verb string, args []Object, nargs []NamedArg) (repl
 }
 
 
-func (self *EvalCtx) String() string {
-	return fmt.Sprintf("%v in (%v)", self.locals, self.parent)
+func (ctx *evalCtx) String() string {
+	return fmt.Sprintf("%v in (%v)", ctx.locals, ctx.parent)
 }
 
-func (ctx *EvalCtx) run(expr Expr) (Object, error) {
+func (ctx *evalCtx) run(expr Expr) (Object, error) {
 	// fmt.Fprintf(os.Stderr, "eval %v in %v\n", expr, ctx)
 	switch it := expr.(type) {
 	case *IntExpr:
@@ -87,27 +87,26 @@ func (ctx *EvalCtx) run(expr Expr) (Object, error) {
 		}
 		return &obj, nil
 	}
-	return nil, errors.New(fmt.Sprintf("@@eval not implemented for %v", expr))
+	return nil, fmt.Errorf("@@eval not implemented for %v", expr)
 }
 
-func (self *EvalCtx) lookup(name string) (Object, bool) {
-	value, ok := self.locals[name]
+func (ctx *evalCtx) lookup(name string) (Object, bool) {
+	value, ok := ctx.locals[name]
 	if ok {
 		return value, ok
 	}
-	if self.parent == nil {
+	if ctx.parent == nil {
 		return nil, false
-	} else {
-		return self.parent.lookup(name)
 	}
+	return ctx.parent.lookup(name)
 }
 
-func (ctx *EvalCtx) matchBind(patt Pattern, specimen Object) error {
+func (ctx *evalCtx) matchBind(patt Pattern, specimen Object) error {
 	// fmt.Printf("matchBind(%v, %v)\n", patt, specimen)
 	switch it := patt.(type) {
 	case *FinalPatt:
 		ctx.locals[it.name] = specimen
 		return nil
 	}
-	return errors.New(fmt.Sprintf("@@matchBind not implmented for %v", patt))
+	return fmt.Errorf("@@matchBind not implmented for %v", patt)
 }
