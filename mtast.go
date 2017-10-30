@@ -63,6 +63,18 @@ func (fp *FinalPatt) String() string {
 	return fp.name
 }
 
+type IgnorePatt struct {
+	guard Expr
+}
+
+func (pat *IgnorePatt) String() string {
+	if pat.guard == nil {
+		return "_"
+	} else {
+		return fmt.Sprintf("_ :%v", pat.guard)
+	}
+}
+
 func printExprs(sep string, items ...Expr) string {
 	parts := make([]string, len(items))
 	for ix, item := range items {

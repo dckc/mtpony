@@ -15,7 +15,7 @@ const MAGIC = "Mont\xe0MAST"
 func Load(r io.Reader) (Expr, error) {
 	input := bufio.NewReader(r)
 
-	checkMagic := func () error {
+	checkMagic := func() error {
 		actual := make([]byte, len(MAGIC))
 		if _, err := io.ReadAtLeast(input, actual, len(MAGIC)); err != nil {
 			return err
@@ -129,6 +129,12 @@ func (self *MASTContext) decode(input *bufio.Reader, version byte) (Expr, error)
 		}
 
 		switch tag {
+		case 'I':
+			guard, err := nextExprOpt()
+			if err != nil {
+				return err
+			}
+			pushPatt(&IgnorePatt{guard})
 		case 'F':
 			name, err := nextStr()
 			if err != nil {
@@ -146,6 +152,33 @@ func (self *MASTContext) decode(input *bufio.Reader, version byte) (Expr, error)
 			return err
 		}
 		return nil
+	}
+
+	getExprs := func() ([]Expr, error) {
+		qty, err := binary.ReadUvarint(input)
+		// TODO: assert qty fits in int
+		if err != nil {
+			return nil, err
+		}
+		out := make([]Expr, qty)
+		for ox := 0; ox < int(qty); ox++ {
+			ix, err := binary.ReadUvarint(input)
+			if err != nil {
+				return nil, err
+			}
+			out[ox] = self.exprs[ix]
+		}
+		return out, nil
+	}
+	getNamedArgs := func() ([]Expr, error) {
+		qty, err := binary.ReadUvarint(input)
+		if err != nil {
+			return nil, err
+		}
+		if qty > 0 {
+			panic("@@named args not implemented")
+		}
+		return []Expr{}, nil
 	}
 
 	for true {
@@ -196,6 +229,26 @@ func (self *MASTContext) decode(input *bufio.Reader, version byte) (Expr, error)
 			if err = loadPattern(); err != nil {
 				return nil, err
 			}
+		case 'C':
+			rx, err := nextExprOpt()
+			if err != nil {
+				return nil, err
+			}
+			verb, err := nextStr()
+			if err != nil {
+				return nil, err
+			}
+			args, err := getExprs()
+			if err != nil {
+				return nil, err
+			}
+			if _, err = getNamedArgs(); err != nil {
+				return nil, err
+			}
+			if err = skipSpan(); err != nil {
+				return nil, err
+			}
+			pushExpr(&CallExpr{rx, verb, args})
 		default:
 			return nil, errors.New(fmt.Sprintf("@@tag not implemented: %q", tag))
 		}
