@@ -6,7 +6,7 @@ import (
 )
 
 type IntObj struct {
-	value int // TODO: bignum
+	value int64 // TODO: bignum
 }
 
 func (it *IntObj) String() string {
@@ -32,7 +32,7 @@ func (it *IntObj) recv(verb string, args []Object, nargs []NamedArg) (reply Obje
 	return nil, errors.New("@@refused")
 }
 
-func unwrapInt(obj Object) (int, error) {
+func unwrapInt(obj Object) (int64, error) {
 	switch it := obj.(type) {
 	case *IntObj:
 		return it.value, nil

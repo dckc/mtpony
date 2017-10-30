@@ -10,11 +10,17 @@ type Expr interface {
 }
 
 type IntExpr struct {
-	value int // TODO: bignum
+	value int64 // TODO: bignum
 }
 
 type NounExpr struct {
 	name string
+}
+
+type DefExpr struct {
+	patt Pattern
+	exit Expr
+	expr Expr
 }
 
 type CallExpr struct {
