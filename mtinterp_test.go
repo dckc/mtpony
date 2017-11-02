@@ -18,13 +18,13 @@ func ExampleObjectExpr() {
 
 	xCall := CallExpr{&NounExpr{"x"}, "b", []Expr{&NounExpr{"n"}}}
 	bodyA := CallExpr{&NounExpr{"n"}, "add", []Expr{&xCall}}
-	l2 := IntExpr{2}
+	l2 := IntLit{2}
 	bodyB := CallExpr{&NounExpr{"n"}, "subtract", []Expr{&l2}}
 	nPatt := FinalPatt{"n", nil}
-	ma := Method{"a", []Pattern{&nPatt}, &bodyA}
-	mb := Method{"b", []Pattern{&nPatt}, &bodyB}
+	ma := Method{"a", []Pattern{&nPatt}, nil, &bodyA}
+	mb := Method{"b", []Pattern{&nPatt}, nil, &bodyB}
 	o1 := ObjectExpr{&FinalPatt{"x", nil}, []Method{ma, mb}}
-	l3 := IntExpr{3}
+	l3 := IntLit{3}
 	c3 := CallExpr{&NounExpr{"x"}, "a", []Expr{&l3}}
 
 	fmt.Println(&o1)

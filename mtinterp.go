@@ -36,6 +36,9 @@ func (obj *UserObject) recv(verb string, args []Object, nargs []NamedArg) (reply
 	arity := len(args)
 	for _, meth := range obj.code.methods {
 		if arity == len(meth.params) && meth.verb == verb {
+			if (meth.guardOpt != nil) {
+				panic("method guard not implemented")
+			}
 			e := evalCtx{make(map[string]Object), obj.env}
 			for px, param := range meth.params {
 				err := e.matchBind(param, args[px])
@@ -57,7 +60,7 @@ func (ctx *evalCtx) String() string {
 func (ctx *evalCtx) run(expr Expr) (Object, error) {
 	// fmt.Fprintf(os.Stderr, "eval %v in %v\n", expr, ctx)
 	switch it := expr.(type) {
-	case *IntExpr:
+	case *IntLit:
 		return &IntObj{it.value}, nil
 	case *NounExpr:
 		value, ok := ctx.lookup(it.name)

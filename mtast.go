@@ -9,8 +9,16 @@ type Expr interface {
 	String() string
 }
 
-type IntExpr struct {
+type IntLit struct {
 	value int64 // TODO: bignum
+}
+
+type StrLit struct {
+	value string
+}
+
+type DoubleLit struct {
+	value float64
 }
 
 type NounExpr struct {
@@ -30,6 +38,25 @@ type CallExpr struct {
 	//namedArgs
 }
 
+type IfExpr struct {
+	cond Expr
+	cons Expr
+	alt  Expr
+}
+
+type AssignExpr struct {
+	target string
+	rhs    Expr
+}
+
+type SeqExpr struct {
+	exprs []Expr
+}
+
+type BindingExpr struct {
+	name string
+}
+
 type ObjectExpr struct {
 	// doc string
 	name Pattern
@@ -43,7 +70,7 @@ type Method struct {
 	// doc string
 	verb   string
 	params []Pattern
-	// guardOpt Expr
+	guardOpt Expr
 	body Expr
 }
 
@@ -56,22 +83,49 @@ type FinalPatt struct {
 	guard Expr
 }
 
-func (fp *FinalPatt) String() string {
-	if fp.guard != nil {
-		return fmt.Sprintf("%v :%v", fp.name, fp.guard)
-	}
-	return fp.name
-}
-
 type IgnorePatt struct {
 	guard Expr
 }
 
-func (pat *IgnorePatt) String() string {
-	if pat.guard == nil {
-		return "_"
+type ListPatt struct {
+	items []Pattern
+}
+
+type ViaPatt struct {
+	expr Expr
+	patt Pattern
+}
+
+type VarPatt struct {
+	name  string
+	guard Expr
+}
+
+func fmtGuardOpt(guardOpt Expr) string {
+	if guardOpt == nil {
+		return ""
 	}
-	return fmt.Sprintf("_ :%v", pat.guard)
+	return fmt.Sprintf(" :%v", guardOpt)
+}
+
+func (pat *IgnorePatt) String() string {
+	return "_" + fmtGuardOpt(pat.guard)
+}
+
+func (fp *FinalPatt) String() string {
+	return fp.name + fmtGuardOpt(fp.guard)
+}
+
+func (pat *ListPatt) String() string {
+	return fmt.Sprintf("[%s]", printPatts(", ", pat.items...))
+}
+
+func (pat *ViaPatt) String() string {
+	return fmt.Sprintf("via (%s) %s", pat.expr, pat.patt)
+}
+
+func (pat *VarPatt) String() string {
+	return "var " + pat.name + fmtGuardOpt(pat.guard)
 }
 
 func printExprs(sep string, items ...Expr) string {
@@ -110,6 +164,21 @@ func (expr *CallExpr) String() string {
 		printExprs(", ", expr.args...))
 }
 
+func (expr *SeqExpr) String() string {
+	return printExprs("; ", expr.exprs...)
+}
+
+func (expr *AssignExpr) String() string {
+	return fmt.Sprintf("%s := %v", expr.target, expr.rhs)
+}
+
+func (expr *IfExpr) String() string {
+	if expr.alt == nil {
+		return fmt.Sprintf("if (%s) { %s }", expr.cond, expr.cons)
+	}
+	return fmt.Sprintf("if (%s) { %s } else { %s }", expr.cond, expr.cons, expr.alt)
+}
+
 func (expr *DefExpr) String() string {
 	if expr.exit == nil {
 		return fmt.Sprintf("def %s := %s", expr.patt, expr.expr)
@@ -121,6 +190,18 @@ func (expr *NounExpr) String() string {
 	return expr.name
 }
 
-func (expr *IntExpr) String() string {
+func (expr *BindingExpr) String() string {
+	return "&&" + expr.name
+}
+
+func (expr *IntLit) String() string {
 	return fmt.Sprintf("%d", expr.value)
+}
+
+func (expr *StrLit) String() string {
+	return fmt.Sprintf("%q", expr.value) // TODO: quoting / escaping?
+}
+
+func (expr *DoubleLit) String() string {
+	return fmt.Sprintf("%v", expr.value)
 }

@@ -6,7 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	// "log"
+	"log"
 )
 
 // MAGIC marks a Monte AST file.
@@ -79,7 +79,7 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 	}
 
 	pushExpr := func(e Expr) {
-		// log.Printf("pushExpr(%v)\n", e)
+		log.Printf("pushExpr(%v)\n", e)
 		ctx.exprs = append(ctx.exprs, e)
 	}
 
@@ -110,7 +110,20 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 			if err != nil {
 				return err
 			}
-			pushExpr(&IntExpr{value})
+			pushExpr(&IntLit{value})
+		case 'S':
+			value, err := nextStr()
+			if err != nil {
+				return err
+			}
+			pushExpr(&StrLit{value})
+		case 'D':
+			var value float64
+			err := binary.Read(input, binary.BigEndian, &value)
+			if err != nil {
+				return err
+			}
+			pushExpr(&DoubleLit{value})
 		default:
 			return fmt.Errorf("@@literal tag not implemented: %q", tag)
 		}
@@ -141,10 +154,44 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 				return err
 			}
 			pushPatt(&FinalPatt{name, guard})
+		case 'L':
+			qty, err := binary.ReadUvarint(input)
+			if err != nil {
+				return err
+			}
+			items := make([]Pattern, qty)
+			for ix := 0; ix < int(qty); ix++ {
+				item, err := nextPatt()
+				if err != nil {
+					return err
+				}
+				items[ix] = item
+			}
+			pushPatt(&ListPatt{items})
+		case 'A':
+			expr, err := nextExprOpt()
+			if err != nil {
+				return err
+			}
+			patt, err := nextPatt()
+			if err != nil {
+				return err
+			}
+			pushPatt(&ViaPatt{expr, patt})
+		case 'V':
+			name, err := nextStr()
+			if err != nil {
+				return err
+			}
+			guard, err := nextExprOpt()
+			if err != nil {
+				return err
+			}
+			pushPatt(&VarPatt{name, guard})
 		default:
 			return fmt.Errorf("@@pattern tag not implemented: %q", tag)
 		}
-		skipSpan()
+		err = skipSpan()
 		return err
 	}
 
@@ -161,6 +208,39 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 				return nil, err
 			}
 			out[ox] = ctx.exprs[ix]
+		}
+		return out, nil
+	}
+	getMethods := func() ([]Method, error) {
+		exprs, err := getExprs()
+		if err != nil {
+			return nil, err
+		}
+		out := make([]Method, len(exprs))
+		for mx, expr := range exprs {
+			switch m := expr.(type) {
+			case *Method:
+				out[mx] = *m
+			default:
+				return nil, fmt.Errorf("expected method; got %v", expr)
+			}
+		}
+		return out, nil
+	}
+
+	getPatterns := func() ([]Pattern, error) {
+		qty, err := binary.ReadUvarint(input)
+		// TODO: assert qty fits in int
+		if err != nil {
+			return nil, err
+		}
+		out := make([]Pattern, qty)
+		for ox := 0; ox < int(qty); ox++ {
+			ix, err := binary.ReadUvarint(input)
+			if err != nil {
+				return nil, err
+			}
+			out[ox] = ctx.patts[ix]
 		}
 		return out, nil
 	}
@@ -243,6 +323,132 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 				return nil, err
 			}
 			pushExpr(&CallExpr{rx, verb, args})
+		case 'I':
+			cond, err := nextExprOpt()
+			if err != nil {
+				return nil, err
+			}
+			cons, err := nextExprOpt()
+			if err != nil {
+				return nil, err
+			}
+			alt, err := nextExprOpt()
+			if err != nil {
+				return nil, err
+			}
+			if err = skipSpan(); err != nil {
+				return nil, err
+			}
+			pushExpr(&IfExpr{cond, cons, alt})
+		case 'B':
+			name, err := nextStr()
+			if err != nil {
+				return nil, err
+			}
+			if err = skipSpan(); err != nil {
+				return nil, err
+			}
+			pushExpr(&BindingExpr{name})
+		case 'A':
+			target, err := nextStr()
+			if err != nil {
+				return nil, err
+			}
+			rhs, err := nextExprOpt()
+			if err != nil {
+				return nil, err
+			}
+			if err = skipSpan(); err != nil {
+				return nil, err
+			}
+			pushExpr(&AssignExpr{target, rhs})
+		case 'S':
+			exprs, err := getExprs()
+			if err != nil {
+				return nil, err
+			}
+			if err = skipSpan(); err != nil {
+				return nil, err
+			}
+			pushExpr(&SeqExpr{exprs})
+		case 'O':
+			doc, err := nextStr()
+			if err != nil {
+				return nil, err
+			}
+			if doc != "" {
+				panic("method doc not implemented")
+			}
+			name, err := nextPatt()
+			if err != nil {
+				return nil, err
+			}
+			asExpr, err := nextExprOpt()
+			if err != nil {
+				return nil, err
+			}
+			if asExpr != nil {
+				panic("asExpr not implemented")
+			}
+			implements, err := getExprs()
+			if err != nil {
+				return nil, err
+			}
+			if len(implements) > 0 {
+				panic("implements not implemented")
+			}
+			methods, err := getMethods()
+			if err != nil {
+				return nil, err
+			}
+			matchers, err := getExprs()
+			if err != nil {
+				return nil, err
+			}
+			if len(matchers) > 0 {
+				panic("@@matchers not implemented")
+			}
+			if err = skipSpan(); err != nil {
+				return nil, err
+			}
+			pushExpr(&ObjectExpr{name, methods})
+
+		case 'M':
+			doc, err := nextStr()
+			if err != nil {
+				return nil, err
+			}
+			if doc != "" {
+				panic("method doc not implemented")
+			}
+			verb, err := nextStr()
+			if err != nil {
+				return nil, err
+			}
+			params, err := getPatterns()
+			if err != nil {
+				return nil, err
+			}
+			namedParams, err := getNamedArgs() //@@
+			if err != nil {
+				return nil, err
+			}
+			if len(namedParams) != 0 {
+				panic("named params not implemented")
+			}
+			guard, err := nextExprOpt()
+			if err != nil {
+				return nil, err
+			}
+			body, err := nextExprOpt()
+			if err != nil {
+				return nil, err
+			}
+			if err = skipSpan(); err != nil {
+				return nil, err
+			}
+			pushExpr(&Method{verb, params, guard, body})
+
 		default:
 			return nil, fmt.Errorf("@@tag not implemented: %q", tag)
 		}
