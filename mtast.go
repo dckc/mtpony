@@ -213,7 +213,7 @@ func (expr *EscapeExpr) String() string {
 }
 
 func (expr *SeqExpr) String() string {
-	return printExprs(";\n", expr.exprs...)
+	return "# SeqExpr\n" + printExprs(";\n", expr.exprs...)
 }
 
 func (expr *AssignExpr) String() string {
