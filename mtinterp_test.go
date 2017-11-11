@@ -23,7 +23,7 @@ func ExampleObjectExpr() {
 	nPatt := FinalPatt{"n", nil}
 	ma := Method{"a", []Pattern{&nPatt}, nil, &bodyA}
 	mb := Method{"b", []Pattern{&nPatt}, nil, &bodyB}
-	o1 := ObjectExpr{&FinalPatt{"x", nil}, []Method{ma, mb}}
+	o1 := ObjectExpr{&FinalPatt{"x", nil}, nil, []Method{ma, mb}}
 	l3 := IntLit{3}
 	c3 := CallExpr{&NounExpr{"x"}, "a", []Expr{&l3}}
 

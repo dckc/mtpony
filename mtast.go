@@ -44,6 +44,11 @@ type IfExpr struct {
 	alt  Expr
 }
 
+type EscapeExpr struct {
+	patt Expr
+	expr Expr
+}
+
 type AssignExpr struct {
 	target string
 	rhs    Expr
@@ -60,7 +65,7 @@ type BindingExpr struct {
 type ObjectExpr struct {
 	// doc string
 	name Pattern
-	//asExpr Expr
+	asExpr Expr
 	//implements []Expr
 	methods []Method
 	// TODO: matchers
@@ -151,7 +156,18 @@ func printMethods(sep string, items ...Method) string {
 }
 
 func (oe *ObjectExpr) String() string {
-	return fmt.Sprintf("object %s {\n  %s\n}", oe.name, printMethods("\n  ", oe.methods...))
+	return fmt.Sprintf("object %s%s {\n  %s\n}",
+		oe.name,
+		optWithSigil(" as", oe.asExpr),
+		printMethods("\n  ", oe.methods...))
+}
+
+func optWithSigil(sigil string, expr Expr) string {
+	if (expr == nil) {
+		return ""
+	} else {
+		return sigil + " " + expr.String()
+	}
 }
 
 func (m Method) String() string {
@@ -164,8 +180,12 @@ func (expr *CallExpr) String() string {
 		printExprs(", ", expr.args...))
 }
 
+func (expr *EscapeExpr) String() string {
+	return fmt.Sprintf("escape %s { %s }", expr.patt, expr.expr)
+}
+
 func (expr *SeqExpr) String() string {
-	return printExprs("; ", expr.exprs...)
+	return printExprs(";\n", expr.exprs...)
 }
 
 func (expr *AssignExpr) String() string {

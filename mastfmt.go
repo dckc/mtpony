@@ -268,11 +268,24 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 		}
 
 		switch tag {
+		case 'P':
+			if err = loadPattern(); err != nil {
+				return nil, err
+			}
 		case 'L':
 			err := loadLiteral()
 			if err != nil {
 				return nil, err
 			}
+		case 'B':
+			name, err := nextStr()
+			if err != nil {
+				return nil, err
+			}
+			if err = skipSpan(); err != nil {
+				return nil, err
+			}
+			pushExpr(&BindingExpr{name})
 		case 'N':
 			name, err := nextStr()
 			if err != nil {
@@ -282,6 +295,19 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 				return nil, err
 			}
 			pushExpr(&NounExpr{name})
+		case 'A':
+			target, err := nextStr()
+			if err != nil {
+				return nil, err
+			}
+			rhs, err := nextExprOpt()
+			if err != nil {
+				return nil, err
+			}
+			if err = skipSpan(); err != nil {
+				return nil, err
+			}
+			pushExpr(&AssignExpr{target, rhs})
 		case 'D':
 			patt, err := nextPatt()
 			if err != nil {
@@ -299,10 +325,6 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 				return nil, err
 			}
 			pushExpr(&DefExpr{patt, exit, expr})
-		case 'P':
-			if err = loadPattern(); err != nil {
-				return nil, err
-			}
 		case 'C':
 			rx, err := nextExprOpt()
 			if err != nil {
@@ -323,6 +345,19 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 				return nil, err
 			}
 			pushExpr(&CallExpr{rx, verb, args})
+		case 'e':
+			patt, err := nextPatt()
+			if err != nil {
+				return nil, err
+			}
+			expr, err := nextExprOpt()
+			if err != nil {
+				return nil, err
+			}
+			if err = skipSpan(); err != nil {
+				return nil, err
+			}
+			pushExpr(&EscapeExpr{patt, expr})
 		case 'I':
 			cond, err := nextExprOpt()
 			if err != nil {
@@ -340,28 +375,6 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 				return nil, err
 			}
 			pushExpr(&IfExpr{cond, cons, alt})
-		case 'B':
-			name, err := nextStr()
-			if err != nil {
-				return nil, err
-			}
-			if err = skipSpan(); err != nil {
-				return nil, err
-			}
-			pushExpr(&BindingExpr{name})
-		case 'A':
-			target, err := nextStr()
-			if err != nil {
-				return nil, err
-			}
-			rhs, err := nextExprOpt()
-			if err != nil {
-				return nil, err
-			}
-			if err = skipSpan(); err != nil {
-				return nil, err
-			}
-			pushExpr(&AssignExpr{target, rhs})
 		case 'S':
 			exprs, err := getExprs()
 			if err != nil {
@@ -387,9 +400,6 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 			if err != nil {
 				return nil, err
 			}
-			if asExpr != nil {
-				panic("asExpr not implemented")
-			}
 			implements, err := getExprs()
 			if err != nil {
 				return nil, err
@@ -411,7 +421,7 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 			if err = skipSpan(); err != nil {
 				return nil, err
 			}
-			pushExpr(&ObjectExpr{name, methods})
+			pushExpr(&ObjectExpr{name, asExpr, methods})
 
 		case 'M':
 			doc, err := nextStr()
@@ -419,7 +429,7 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 				return nil, err
 			}
 			if doc != "" {
-				panic("method doc not implemented")
+				log.Printf("WARNING! method doc not implemented: %q", doc)
 			}
 			verb, err := nextStr()
 			if err != nil {
