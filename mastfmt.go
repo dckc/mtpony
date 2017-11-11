@@ -75,6 +75,10 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 		if err != nil {
 			return nil, err
 		}
+		if int(ix) >= len(ctx.exprs) {
+			return nil, fmt.Errorf("MAST index %v out of bounds (only %v exprs)",
+				ix, len(ctx.exprs))
+		}
 		return ctx.exprs[ix], nil
 	}
 
@@ -87,6 +91,10 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 		ix, err := binary.ReadUvarint(input)
 		if err != nil {
 			return nil, err
+		}
+		if int(ix) >= len(ctx.patts) {
+			return nil, fmt.Errorf("MAST index %v out of bounds (only %v patterns)",
+				ix, len(ctx.patts))
 		}
 		return ctx.patts[ix], nil
 	}
@@ -203,13 +211,31 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 		}
 		out := make([]Expr, qty)
 		for ox := 0; ox < int(qty); ox++ {
-			ix, err := binary.ReadUvarint(input)
+			out[ox], err = nextExprOpt()
 			if err != nil {
 				return nil, err
 			}
-			out[ox] = ctx.exprs[ix]
 		}
 		return out, nil
+	}
+	getNamedArgs := func() ([]NamedExpr, error) {
+		qty, err := binary.ReadUvarint(input)
+		if err != nil {
+			return nil, err
+		}
+		items := make([]NamedExpr, qty)
+		for ix := 0; ix < int(qty); ix++ {
+			items[ix].name, err = nextExprOpt()
+			if err != nil {
+				return nil, err
+			}
+
+			items[ix].value, err = nextExprOpt()
+			if err != nil {
+				return nil, err
+			}
+		}
+		return items, nil
 	}
 	getMethods := func() ([]Method, error) {
 		exprs, err := getExprs()
@@ -244,15 +270,29 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 		}
 		return out, nil
 	}
-	getNamedArgs := func() ([]Expr, error) {
+	getNamedPatts := func() ([]NamedPattern, error) {
 		qty, err := binary.ReadUvarint(input)
 		if err != nil {
 			return nil, err
 		}
-		if qty > 0 {
-			panic("@@named args not implemented")
+		items := make([]NamedPattern, qty)
+		for ix := 0; ix < int(qty); ix++ {
+			items[ix].key, err = nextExprOpt()
+			if err != nil {
+				return nil, err
+			}
+
+			items[ix].patt, err = nextPatt()
+			if err != nil {
+				return nil, err
+			}
+
+			items[ix].default_, err = nextExprOpt()
+			if err != nil {
+				return nil, err
+			}
 		}
-		return []Expr{}, nil
+		return items, nil
 	}
 
 	for true {
@@ -338,13 +378,14 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 			if err != nil {
 				return nil, err
 			}
-			if _, err = getNamedArgs(); err != nil {
+			namedArgs, err := getNamedArgs()
+			if err != nil {
 				return nil, err
 			}
 			if err = skipSpan(); err != nil {
 				return nil, err
 			}
-			pushExpr(&CallExpr{rx, verb, args})
+			pushExpr(&CallExpr{rx, verb, args, namedArgs})
 		case 'e':
 			patt, err := nextPatt()
 			if err != nil {
@@ -390,7 +431,7 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 				return nil, err
 			}
 			if doc != "" {
-				panic("method doc not implemented")
+				log.Printf("WARNING! object doc not implemented: %q", doc)
 			}
 			name, err := nextPatt()
 			if err != nil {
@@ -439,12 +480,9 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 			if err != nil {
 				return nil, err
 			}
-			namedParams, err := getNamedArgs() //@@
+			namedParams, err := getNamedPatts()
 			if err != nil {
 				return nil, err
-			}
-			if len(namedParams) != 0 {
-				panic("named params not implemented")
 			}
 			guard, err := nextExprOpt()
 			if err != nil {
@@ -457,7 +495,7 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 			if err = skipSpan(); err != nil {
 				return nil, err
 			}
-			pushExpr(&Method{verb, params, guard, body})
+			pushExpr(&Method{verb, params, namedParams, guard, body})
 
 		default:
 			return nil, fmt.Errorf("@@tag not implemented: %q", tag)

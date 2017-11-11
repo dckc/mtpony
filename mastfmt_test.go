@@ -24,32 +24,56 @@ func ExampleMAGIC() {
 
 func ExampleLoad() {
 	// Output:
-	// expr: def ITERATIONS :Int := 170 err: <nil>
 	// module obj method verb: run
 	// module obj method verb: dependencies
-	// module body expr count: 4
+	// module body expr count: 19
 
+	input := []byte(brot)
+	r := bytes.NewReader(input)
+	expr, err := Load(r)
+	if err != nil {
+		fmt.Printf("err: %v\n", err)
+	}
+	switch mob := expr.(type) {
+	case *ObjectExpr:
+		for _, method := range mob.methods {
+			fmt.Printf("module obj method verb: %v\n", method.verb)
+		}
+		switch body := mob.methods[0].body.(type) {
+		case *SeqExpr:
+			fmt.Printf("module body expr count: %v\n", len(body.exprs))
+		}
+	}
+}
+
+func ExampleLoad2() {
+	// Output:
+	// expr: def ITERATIONS :Int := 170 err: <nil>
 	input := []byte(brot1)
 	r := bytes.NewReader(input)
 	expr, err := Load(r)
 	fmt.Printf("expr: %v err: %v\n", expr, err)
+}
 
-	{
-		input := []byte(brot2)
-		r := bytes.NewReader(input)
-		expr, err := Load(r)
-		if err != nil {
-			fmt.Printf("err: %v\n", err)
+func ExampleLoad3() {
+	// Output:
+	// module obj method verb: run
+	// module obj method verb: dependencies
+	// module body expr count: 4
+	input := []byte(brot2)
+	r := bytes.NewReader(input)
+	expr, err := Load(r)
+	if err != nil {
+		fmt.Printf("err: %v\n", err)
+	}
+	switch mob := expr.(type) {
+	case *ObjectExpr:
+		for _, method := range mob.methods {
+			fmt.Printf("module obj method verb: %v\n", method.verb)
 		}
-		switch mob := expr.(type) {
-		case *ObjectExpr:
-			for _, method := range mob.methods {
-				fmt.Printf("module obj method verb: %v\n", method.verb)
-			}
-			switch body := mob.methods[0].body.(type) {
-			case *SeqExpr:
-				fmt.Printf("module body expr count: %v", len(body.exprs))
-			}
+		switch body := mob.methods[0].body.(type) {
+		case *SeqExpr:
+			fmt.Printf("module body expr count: %v\n", len(body.exprs))
 		}
 	}
 }

@@ -32,10 +32,15 @@ type DefExpr struct {
 }
 
 type CallExpr struct {
-	target Expr
-	verb   string
-	args   []Expr
-	//namedArgs
+	target    Expr
+	verb      string
+	args      []Expr
+	namedArgs []NamedExpr
+}
+
+type NamedExpr struct {
+	name  Expr
+	value Expr
 }
 
 type IfExpr struct {
@@ -64,7 +69,7 @@ type BindingExpr struct {
 
 type ObjectExpr struct {
 	// doc string
-	name Pattern
+	name   Pattern
 	asExpr Expr
 	//implements []Expr
 	methods []Method
@@ -73,14 +78,20 @@ type ObjectExpr struct {
 
 type Method struct {
 	// doc string
-	verb   string
-	params []Pattern
-	guardOpt Expr
-	body Expr
+	verb        string
+	params      []Pattern
+	namedParams []NamedPattern
+	guardOpt    Expr
+	body        Expr
 }
 
 type Pattern interface {
 	String() string
+}
+type NamedPattern struct {
+	key      Expr
+	patt     Pattern
+	default_ Expr
 }
 
 type FinalPatt struct {
@@ -147,6 +158,23 @@ func printPatts(sep string, items ...Pattern) string {
 	}
 	return strings.Join(parts, sep)
 }
+func printNamedPatts(sep string, items ...NamedPattern) string {
+	if len(items) == 0 {
+		return ""
+	}
+
+	parts := make([]string, len(items))
+	for ix, item := range items {
+		if item.default_ != nil {
+			parts[ix] = fmt.Sprintf("%v => %v := %v",
+				item.key, item.patt, item.default_)
+		} else {
+			parts[ix] = fmt.Sprintf("%v => %v",
+				item.key, item.patt)
+		}
+	}
+	return sep + strings.Join(parts, sep)
+}
 func printMethods(sep string, items ...Method) string {
 	parts := make([]string, len(items))
 	for ix, item := range items {
@@ -163,7 +191,7 @@ func (oe *ObjectExpr) String() string {
 }
 
 func optWithSigil(sigil string, expr Expr) string {
-	if (expr == nil) {
+	if expr == nil {
 		return ""
 	} else {
 		return sigil + " " + expr.String()
@@ -171,8 +199,8 @@ func optWithSigil(sigil string, expr Expr) string {
 }
 
 func (m Method) String() string {
-	return fmt.Sprintf("method %s(%s) {\n    %s\n  }", m.verb,
-		printPatts(", ", m.params...), m.body)
+	return fmt.Sprintf("method %s(%s%s) {\n    %s\n  }", m.verb,
+		printPatts(", ", m.params...), printNamedPatts(", ", m.namedParams...), m.body)
 }
 
 func (expr *CallExpr) String() string {
@@ -181,7 +209,7 @@ func (expr *CallExpr) String() string {
 }
 
 func (expr *EscapeExpr) String() string {
-	return fmt.Sprintf("escape %s { %s }", expr.patt, expr.expr)
+	return fmt.Sprintf("escape %s {\n %s }\n", expr.patt, expr.expr)
 }
 
 func (expr *SeqExpr) String() string {

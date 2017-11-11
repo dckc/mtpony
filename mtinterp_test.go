@@ -16,16 +16,20 @@ func ExampleObjectExpr() {
 	// x.a(3)
 	// 4
 
-	xCall := CallExpr{&NounExpr{"x"}, "b", []Expr{&NounExpr{"n"}}}
-	bodyA := CallExpr{&NounExpr{"n"}, "add", []Expr{&xCall}}
+	xCall := CallExpr{&NounExpr{"x"}, "b", []Expr{&NounExpr{"n"}},
+		[]NamedExpr{}}
+	bodyA := CallExpr{&NounExpr{"n"}, "add", []Expr{&xCall},
+		[]NamedExpr{}}
 	l2 := IntLit{2}
-	bodyB := CallExpr{&NounExpr{"n"}, "subtract", []Expr{&l2}}
+	bodyB := CallExpr{&NounExpr{"n"}, "subtract", []Expr{&l2},
+		[]NamedExpr{}}
 	nPatt := FinalPatt{"n", nil}
-	ma := Method{"a", []Pattern{&nPatt}, nil, &bodyA}
-	mb := Method{"b", []Pattern{&nPatt}, nil, &bodyB}
+	ma := Method{"a", []Pattern{&nPatt}, nil, nil, &bodyA}
+	mb := Method{"b", []Pattern{&nPatt}, nil, nil, &bodyB}
 	o1 := ObjectExpr{&FinalPatt{"x", nil}, nil, []Method{ma, mb}}
 	l3 := IntLit{3}
-	c3 := CallExpr{&NounExpr{"x"}, "a", []Expr{&l3}}
+	c3 := CallExpr{&NounExpr{"x"}, "a", []Expr{&l3},
+		[]NamedExpr{}}
 
 	fmt.Println(&o1)
 
