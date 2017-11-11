@@ -3,6 +3,7 @@ package monte
 import (
 	"errors"
 	"fmt"
+	"log"
 )
 
 type Evaluator interface {
@@ -36,7 +37,7 @@ func (obj *UserObject) recv(verb string, args []Object, nargs []NamedArg) (reply
 	arity := len(args)
 	for _, meth := range obj.code.methods {
 		if arity == len(meth.params) && meth.verb == verb {
-			if (meth.guardOpt != nil) {
+			if meth.guardOpt != nil {
 				panic("method guard not implemented")
 			}
 			e := evalCtx{make(map[string]Object), obj.env}
@@ -51,7 +52,6 @@ func (obj *UserObject) recv(verb string, args []Object, nargs []NamedArg) (reply
 	}
 	return nil, errors.New("@@refused")
 }
-
 
 func (ctx *evalCtx) String() string {
 	return fmt.Sprintf("%v in (%v)", ctx.locals, ctx.parent)
@@ -68,6 +68,16 @@ func (ctx *evalCtx) run(expr Expr) (Object, error) {
 			return value, nil
 		}
 		return nil, errors.New("@@not bound: " + it.name)
+	case *DefExpr:
+		rhs, err := ctx.run(it.expr)
+		if err != nil {
+			return nil, err
+		}
+		err = ctx.matchBind(it.patt, rhs)
+		if err != nil {
+			return nil, err
+		}
+		return rhs, nil
 	case *CallExpr:
 		rx, err := ctx.run(it.target)
 		if err != nil {
@@ -108,6 +118,9 @@ func (ctx *evalCtx) matchBind(patt Pattern, specimen Object) error {
 	// fmt.Printf("matchBind(%v, %v)\n", patt, specimen)
 	switch it := patt.(type) {
 	case *FinalPatt:
+		if it.guard != nil {
+			log.Printf("WARNING! TODO guard checking: %v: %v", specimen, it.guard)
+		}
 		ctx.locals[it.name] = specimen
 		return nil
 	}

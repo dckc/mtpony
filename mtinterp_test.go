@@ -1,6 +1,9 @@
 package monte
 
-import "fmt"
+import (
+	"bytes"
+	"fmt"
+)
 
 func ExampleObjectExpr() {
 	// Output:
@@ -48,4 +51,16 @@ func ExampleObjectExpr() {
 	} else {
 		fmt.Println(result)
 	}
+}
+
+func ExampleMASTDef() {
+	// Output:
+	// expr: def ITERATIONS :Int := 170
+	// result: 170 err: <nil>
+	input := bytes.NewReader([]byte(brot1))
+	expr, err := Load(input)
+	fmt.Printf("expr: %v\n", expr)
+	interp := evalCtx{map[string]Object{}, nil}
+	result, err := interp.run(expr)
+	fmt.Printf("result: %v err: %v\n", result, err)
 }

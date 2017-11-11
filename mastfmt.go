@@ -83,7 +83,7 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 	}
 
 	pushExpr := func(e Expr) {
-		log.Printf("pushExpr(%v)\n", e)
+		// log.Printf("pushExpr(%v)\n", e)
 		ctx.exprs = append(ctx.exprs, e)
 	}
 
