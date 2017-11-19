@@ -31,6 +31,10 @@ type DefExpr struct {
 	expr Expr
 }
 
+type HideExpr struct {
+	body Expr
+}
+
 type CallExpr struct {
 	target    Expr
 	verb      string
@@ -65,6 +69,9 @@ type SeqExpr struct {
 
 type BindingExpr struct {
 	name string
+}
+
+type MetaContextExpr struct {
 }
 
 type ObjectExpr struct {
@@ -233,12 +240,20 @@ func (expr *DefExpr) String() string {
 	return fmt.Sprintf("def %s exit %s := %s", expr.patt, expr.exit, expr.expr)
 }
 
+func (expr *HideExpr) String() string {
+	return fmt.Sprintf("{\n %s }\n", expr.body)
+}
+
 func (expr *NounExpr) String() string {
 	return expr.name
 }
 
 func (expr *BindingExpr) String() string {
 	return "&&" + expr.name
+}
+
+func (expr *MetaContextExpr) String() string {
+	return "meta.context()"
 }
 
 func (expr *IntLit) String() string {

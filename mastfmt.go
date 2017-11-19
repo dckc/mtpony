@@ -369,6 +369,15 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 				return nil, err
 			}
 			pushExpr(&DefExpr{patt, exit, expr})
+		case 'H':
+			body, err := nextExprOpt()
+			if err != nil {
+				return nil, err
+			}
+			if err = skipSpan(); err != nil {
+				return nil, err
+			}
+			pushExpr(&HideExpr{body})
 		case 'C':
 			rx, err := nextExprOpt()
 			if err != nil {
@@ -501,6 +510,11 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 			}
 			pushExpr(&Method{verb, params, namedParams, guard, body})
 
+		case 'X':
+			if err = skipSpan(); err != nil {
+				return nil, err
+			}
+			pushExpr(&MetaContextExpr{})
 		default:
 			return nil, fmt.Errorf("@@tag not implemented: %q", tag)
 		}
