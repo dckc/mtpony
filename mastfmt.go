@@ -459,7 +459,7 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 				return nil, err
 			}
 			if len(implements) > 0 {
-				panic("implements not implemented")
+				log.Printf("WARNING! implements not implemented: %v", implements)
 			}
 			methods, err := getMethods()
 			if err != nil {
