@@ -8,14 +8,16 @@ import (
 	"strings"
 )
 
-func Evaluate(expr Expr, scope map[string]interface{}) (interface{}, error) {
-	interp := evalCtx{scope, nil}
+type Scope map[string]interface{}
+
+func Evaluate(expr Expr, scope Scope) (interface{}, error) {
+	interp := scopeStack{scope, nil}
 	return interp.run(expr)
 }
 
-type evalCtx struct {
-	locals map[string]interface{}
-	parent *evalCtx
+type scopeStack struct {
+	locals Scope
+	parent *scopeStack
 }
 
 type NamedArg struct {
@@ -24,7 +26,7 @@ type NamedArg struct {
 }
 
 type UserObject struct {
-	env  *evalCtx
+	env  *scopeStack
 	code *ObjectExpr
 }
 
@@ -71,7 +73,7 @@ func (obj *UserObject) recv(verb string, args []interface{}, nargs []NamedArg) (
 			if meth.guardOpt != nil {
 				log.Printf("WARNING! method guard not implemented: %v", meth.guardOpt)
 			}
-			e := evalCtx{make(map[string]interface{}), obj.env}
+			e := scopeStack{make(Scope), obj.env}
 			for px, param := range meth.params {
 				err := e.matchBind(param, args[px])
 				if err != nil {
@@ -84,11 +86,11 @@ func (obj *UserObject) recv(verb string, args []interface{}, nargs []NamedArg) (
 	return nil, errors.New("@@refused")
 }
 
-func (ctx *evalCtx) String() string {
+func (ctx *scopeStack) String() string {
 	return fmt.Sprintf("%v in (%v)", ctx.locals, ctx.parent)
 }
 
-func (ctx *evalCtx) run(expr Expr) (interface{}, error) {
+func (ctx *scopeStack) run(expr Expr) (interface{}, error) {
 	// fmt.Fprintf(os.Stderr, "eval %v in %v\n", expr, ctx)
 	switch it := expr.(type) {
 	case *IntLit:
@@ -111,6 +113,9 @@ func (ctx *evalCtx) run(expr Expr) (interface{}, error) {
 			return nil, err
 		}
 		return rhs, nil
+	case *HideExpr:
+		return ctx.withFreshScope(
+			func(inner *scopeStack) (Any, error) { return inner.run(it.body) })
 	case *CallExpr:
 		rx, err := ctx.run(it.target)
 		if err != nil {
@@ -146,7 +151,7 @@ func (ctx *evalCtx) run(expr Expr) (interface{}, error) {
 	return nil, fmt.Errorf("@@eval not implemented for %v", expr)
 }
 
-func (ctx *evalCtx) lookup(name string) (interface{}, bool) {
+func (ctx *scopeStack) lookup(name string) (interface{}, bool) {
 	value, ok := ctx.locals[name]
 	if ok {
 		return value, ok
@@ -157,7 +162,13 @@ func (ctx *evalCtx) lookup(name string) (interface{}, bool) {
 	return ctx.parent.lookup(name)
 }
 
-func (ctx *evalCtx) matchBind(patt Pattern, specimen interface{}) error {
+func (env *scopeStack) withFreshScope(thunk func(*scopeStack) (Any, error)) (Any, error) {
+	fresh := scopeStack{make(Scope), env}
+	return thunk(&fresh)
+}
+
+
+func (ctx *scopeStack) matchBind(patt Pattern, specimen interface{}) error {
 	// fmt.Printf("matchBind(%v, %v)\n", patt, specimen)
 	switch it := patt.(type) {
 	case *IgnorePatt:

@@ -76,7 +76,7 @@ func ExampleModule() {
 	}
 
 	// fmt.Printf("expr: %v\n", expr)
-	safeScope := map[string]interface{}{} // TODO
+	safeScope := MakeSafeScope()
 	module, err := Evaluate(expr, safeScope)
 	if err != nil {
 		fmt.Println(err)
@@ -84,7 +84,7 @@ func ExampleModule() {
 	}
 
 	// KLUDGE: Using os.Open makes this an integration test, not a unit test.
-	package1 := Package{&fileRead{".", os.Open}}
+	package1 := Package{&fileRead{".", os.Open}, safeScope}
 	scope1 := map[string]interface{}{
 		"brot":     module,
 		"package1": &package1}
