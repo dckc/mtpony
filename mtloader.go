@@ -24,6 +24,7 @@ func MakeSafeScope() Scope {
 		"Double":            &DoubleGuard{},
 		"_makeList":         &ListMaker{},
 		"_makeMap":          &MapMaker{},
+		"throw":             &Thrower{},
 		"_makeProtocolDesc": &Stub{"_makeProtocolDesc"},
 		"_makeMessageDesc":  &Stub{"_makeMessageDesc"},
 		"_makeParamDesc":    &Stub{"_makeParamDesc"},
@@ -56,13 +57,13 @@ func (pkg *Package) Import(petname interface{}) (interface{}, error) {
 		return nil, err
 	}
 
-	deps, err := MCall(module, "dependencies", []interface{}{}, []NamedArg{})
+	deps, err := MCall(module, "dependencies", []Any{}, []NamedArg{})
 	if err != nil {
 		return nil, err
 	}
 	log.Printf("deps: %v", deps)
 
-	return MCall(module, "run", []interface{}{pkg}, []NamedArg{})
+	return MCall(module, "run", []Any{pkg}, []NamedArg{})
 }
 
 func (pkg *Package) String() string {

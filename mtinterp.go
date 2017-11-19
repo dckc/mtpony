@@ -10,14 +10,21 @@ import (
 
 type Scope map[string]interface{}
 
-func Evaluate(expr Expr, scope Scope) (interface{}, error) {
-	interp := scopeStack{scope, nil}
-	return interp.run(expr)
+var noSpecimen = Stub{"noSpecimen"}
+
+type Thrower struct {
 }
 
 type scopeStack struct {
 	locals Scope
 	parent *scopeStack
+}
+
+type evaluator struct {
+	scopes         *scopeStack
+	specimen       Any
+	patternFailure Any
+	throw          Any
 }
 
 type NamedArg struct {
@@ -30,11 +37,43 @@ type UserObject struct {
 	code *ObjectExpr
 }
 
+func Evaluate(expr Expr, scope Scope) (interface{}, error) {
+	value, _, err := EvalAndBind(expr, scope)
+	return value, err
+}
+
+func EvalAndBind(expr Expr, scope Scope) (Any, Scope, error) {
+	throw, ok := scope["throw"]
+	if !ok {
+		throw = Thrower{}
+	}
+	emptyLocals := make(Scope)
+	interp := evaluator{
+		&scopeStack{emptyLocals, &scopeStack{scope, nil}},
+		noSpecimen,
+		throw,
+		throw,
+	}
+	value, err := interp.run(expr)
+	if err != nil {
+		return nil, nil, err
+	}
+	return value, interp.scopes.locals, nil
+}
+
 func (obj *UserObject) String() string {
 	return fmt.Sprintf("<%v>", obj.code.name)
 }
 
-func MCall(rx interface{}, verb string, args []interface{}, nargs []NamedArg) (interface{}, error) {
+func (f *Thrower) String() string {
+	return "throw"
+}
+
+func (f *Thrower) Run(payload Any) (Any, error) {
+	return nil, fmt.Errorf("@@throw(%v)", payload)
+}
+
+func MCall(rx interface{}, verb string, args []Any, nargs []NamedArg) (interface{}, error) {
 	log.Printf("MCall: %v.%v(%v %v)", rx, verb, args, nargs)
 	switch obj := rx.(type) {
 	case *UserObject:
@@ -67,16 +106,21 @@ func MCall(rx interface{}, verb string, args []interface{}, nargs []NamedArg) (i
 	return result, err
 }
 
-func (obj *UserObject) recv(verb string, args []interface{}, nargs []NamedArg) (reply interface{}, err error) {
+func (obj *UserObject) recv(verb string, args []Any, nargs []NamedArg) (reply interface{}, err error) {
 	arity := len(args)
 	for _, meth := range obj.code.methods {
 		if arity == len(meth.params) && meth.verb == verb {
 			if meth.guardOpt != nil {
 				log.Printf("WARNING! method guard not implemented: %v", meth.guardOpt)
 			}
-			e := scopeStack{make(Scope), obj.env}
+			throw, foundThrow := obj.env.lookup("throw")
+			if !foundThrow {
+				// ISSUE: object's vat's throw?
+				throw = Thrower{}
+			}
+			e := evaluator{obj.env, noSpecimen, throw, throw}
 			for px, param := range meth.params {
-				err := e.matchBind(param, args[px])
+				err := e.matchBind(param, args[px], throw)
 				if err != nil {
 					return nil, err
 				}
@@ -91,7 +135,7 @@ func (ctx *scopeStack) String() string {
 	return fmt.Sprintf("%v in (%v)", ctx.locals, ctx.parent)
 }
 
-func (ctx *scopeStack) run(expr Expr) (interface{}, error) {
+func (frame *evaluator) run(expr Expr) (interface{}, error) {
 	// fmt.Fprintf(os.Stderr, "eval %v in %v\n", expr, ctx)
 	switch it := expr.(type) {
 	case *IntLit:
@@ -99,32 +143,40 @@ func (ctx *scopeStack) run(expr Expr) (interface{}, error) {
 	case *StrLit:
 		return &StrObj{it.value}, nil
 	case *NounExpr:
-		value, ok := ctx.lookup(it.name)
+		value, ok := frame.scopes.lookup(it.name)
 		if ok {
 			return value, nil
 		}
 		return nil, errors.New("@@not bound: " + it.name)
 	case *DefExpr:
-		rhs, err := ctx.run(it.expr)
+		ex := frame.throw
+		if it.exit != nil {
+			var err error
+			ex, err = frame.run(it.exit)
+			if err != nil {
+				return nil, err
+			}
+		}
+		rhs, err := frame.run(it.expr)
 		if err != nil {
 			return nil, err
 		}
-		err = ctx.matchBind(it.patt, rhs)
+		err = frame.matchBind(it.patt, rhs, ex)
 		if err != nil {
 			return nil, err
 		}
 		return rhs, nil
 	case *HideExpr:
-		return ctx.withFreshScope(
-			func(inner *scopeStack) (Any, error) { return inner.run(it.body) })
+		return frame.withFreshScope(
+			func() (Any, error) { return frame.run(it.body) })
 	case *CallExpr:
-		rx, err := ctx.run(it.target)
+		rx, err := frame.run(it.target)
 		if err != nil {
 			return nil, err
 		}
-		params := make([]interface{}, len(it.args))
+		params := make([]Any, len(it.args))
 		for ix, arg := range it.args {
-			params[ix], err = ctx.run(arg)
+			params[ix], err = frame.run(arg)
 			if err != nil {
 				return nil, err
 			}
@@ -134,7 +186,7 @@ func (ctx *scopeStack) run(expr Expr) (interface{}, error) {
 	case *SeqExpr:
 		var rv interface{}
 		for _, expr := range it.exprs {
-			result, err := ctx.run(expr)
+			result, err := frame.run(expr)
 			if err != nil {
 				return nil, err
 			}
@@ -142,8 +194,8 @@ func (ctx *scopeStack) run(expr Expr) (interface{}, error) {
 		}
 		return rv, nil
 	case *ObjectExpr:
-		obj := UserObject{ctx, it}
-		err := ctx.matchBind(it.name, &obj)
+		obj := UserObject{frame.scopes, it}
+		err := frame.matchBind(it.name, &obj, frame.throw)
 		if err != nil {
 			return nil, err
 		}
@@ -166,13 +218,14 @@ func (ctx *scopeStack) lookup(name string) (interface{}, bool) {
 	return ctx.parent.lookup(name)
 }
 
-func (env *scopeStack) withFreshScope(thunk func(*scopeStack) (Any, error)) (Any, error) {
-	fresh := scopeStack{make(Scope), env}
-	return thunk(&fresh)
+func (frame *evaluator) withFreshScope(thunk func() (Any, error)) (Any, error) {
+	frame.scopes = &scopeStack{make(Scope), frame.scopes}
+	value, err := thunk()
+	frame.scopes = frame.scopes.parent
+	return value, err
 }
 
-
-func (ctx *scopeStack) matchBind(patt Pattern, specimen interface{}) error {
+func (ctx *evaluator) matchBind(patt Pattern, specimen interface{}, ej Any) error {
 	// fmt.Printf("matchBind(%v, %v)\n", patt, specimen)
 	switch it := patt.(type) {
 	case *IgnorePatt:
@@ -184,8 +237,20 @@ func (ctx *scopeStack) matchBind(patt Pattern, specimen interface{}) error {
 		if it.guard != nil {
 			log.Printf("WARNING! TODO guard checking: %v: %v", specimen, it.guard)
 		}
-		ctx.locals[it.name] = specimen
+		ctx.scopes.locals[it.name] = specimen
 		return nil
+	case *ViaPatt:
+		ej := ctx.patternFailure
+		v, err := ctx.run(it.expr)
+		if err != nil {
+			return err
+		}
+		newSpec, err := MCall(v, "run", []Any{specimen, ej}, []NamedArg{})
+		if err != nil {
+			return err
+		}
+		// semantics could be clearer that we use the same ejector below.
+		ctx.matchBind(it.patt, newSpec, ej)
 	}
 	return fmt.Errorf("@@matchBind not implmented for %v", patt)
 }

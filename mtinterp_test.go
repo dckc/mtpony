@@ -44,7 +44,7 @@ func ExampleObjectExpr() {
 	fmt.Println(&o1)
 
 	emptyScope := make(map[string]interface{})
-	result, err := Evaluate(&o1, emptyScope)
+	result, locals, err := EvalAndBind(&o1, emptyScope)
 	if err != nil {
 		fmt.Println(err)
 	} else {
@@ -52,7 +52,7 @@ func ExampleObjectExpr() {
 	}
 
 	fmt.Println(&c3)
-	result, err = Evaluate(&c3, emptyScope)
+	result, err = Evaluate(&c3, locals)
 	if err != nil {
 		fmt.Println(err)
 	} else {
