@@ -101,7 +101,7 @@ func ExampleModule() {
 	}
 	fmt.Printf("result: %v err: %v\n", result, err)
 	// Output:
-	// X
+	// result: ["brotCount" => <brotCount>] err: <nil>
 }
 
 type fileRead struct {

@@ -24,6 +24,9 @@ type MapMaker struct {
 	// ISSUE: cache the empty map?
 }
 
+type MapGuard struct {
+}
+
 func (*ListMaker) String() string {
 	return "_makeList"
 }
@@ -60,29 +63,46 @@ func (m *ConstMap) String() string {
 	return "[" + strings.Join(parts, ", ") + "]"
 }
 
-func (*MapMaker) FromPairs(arg Any) (Any, error) {
-	switch pairs := arg.(type) {
+func unwrapList(specimen Any) ([]Any, error) {
+	switch l := specimen.(type) {
 	case *ConstList:
-		keys := make([]Any, len(pairs.objs))
-		values := make([]Any, len(pairs.objs))
-		for ix, pair := range pairs.objs {
-			switch keyValue := pair.(type) {
-			case *ConstList:
-				if len(keyValue.objs) != 2 {
-					return nil, fmt.Errorf("bad pair length: %v", keyValue)
-				}
-				// TODO: check settledness
-				keys[ix] = keyValue.objs[0]
-				values[ix] = keyValue.objs[1]
-			default:
-				return nil, fmt.Errorf("pair must be ConstList: %v", pair)
-			}
-		}
-		value := &ConstMap{&ConstList{keys}, &ConstList{values}}
-		// log.Printf("made map: %v (%v / %v)", value, m, keys)
-		return value, nil
+		return l.objs, nil
 	default:
-		return nil, fmt.Errorf("arg be ConstList: %v", arg)
+		return nil, fmt.Errorf("must be List: %v", specimen)
+	}
+}
+
+func (*MapMaker) FromPairs(arg Any) (Any, error) {
+	pairs, err := unwrapList(arg)
+	if err != nil {
+		return nil, err
+	}
+	keys := make([]Any, len(pairs))
+	values := make([]Any, len(pairs))
+	for ix, pair := range pairs {
+		switch keyValue := pair.(type) {
+		case *ConstList:
+			if len(keyValue.objs) != 2 {
+				return nil, fmt.Errorf("bad pair length: %v", keyValue)
+			}
+			// TODO: check settledness
+			keys[ix] = keyValue.objs[0]
+			values[ix] = keyValue.objs[1]
+		default:
+			return nil, fmt.Errorf("pair must be ConstList: %v", pair)
+		}
+	}
+	value := &ConstMap{&ConstList{keys}, &ConstList{values}}
+	// log.Printf("made map: %v (%v / %v)", value, m, keys)
+	return value, nil
+}
+
+func unwrapMap(specimen Any) (*ConstMap, error) {
+	switch m := specimen.(type) {
+	case *ConstMap:
+		return m, nil
+	default:
+		return nil, fmt.Errorf("must be Map: %v", specimen)
 	}
 }
 

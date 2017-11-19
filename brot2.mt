@@ -1,4 +1,5 @@
 import "lib/complex" =~ [=> makeComplex :DeepFrozen]
+exports (brotCount)
 
 def ITERATIONS :Int := 170
 

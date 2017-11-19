@@ -24,7 +24,7 @@ type evaluator struct {
 	scopes         *scopeStack
 	specimen       Any
 	patternFailure Any
-	throw          Any
+	throw          *Thrower
 }
 
 type NamedArg struct {
@@ -43,10 +43,9 @@ func Evaluate(expr Expr, scope Scope) (interface{}, error) {
 }
 
 func EvalAndBind(expr Expr, scope Scope) (Any, Scope, error) {
-	throw, ok := scope["throw"]
-	if !ok {
-		throw = Thrower{}
-	}
+	// ISSUE: throw, ok := scope["throw"]
+	throw := &Thrower{}
+
 	emptyLocals := make(Scope)
 	interp := evaluator{
 		&scopeStack{emptyLocals, &scopeStack{scope, nil}},
@@ -120,9 +119,9 @@ func (obj *UserObject) recv(verb string, args []Any, nargs []NamedArg) (reply in
 			throw, foundThrow := obj.env.lookup("throw")
 			if !foundThrow {
 				// ISSUE: object's vat's throw?
-				throw = Thrower{}
+				throw = &Thrower{}
 			}
-			e := evaluator{obj.env, noSpecimen, throw, throw}
+			e := evaluator{obj.env, noSpecimen, throw, throw.(*Thrower)}
 			for px, param := range meth.params {
 				err := e.matchBind(param, args[px], throw)
 				if err != nil {
@@ -153,7 +152,7 @@ func (frame *evaluator) run(expr Expr) (interface{}, error) {
 		}
 		return nil, errors.New("@@not bound: " + it.name)
 	case *DefExpr:
-		ex := frame.throw
+		ex := Any(frame.throw)
 		if it.exit != nil {
 			var err error
 			ex, err = frame.run(it.exit)
@@ -255,6 +254,28 @@ func (ctx *evaluator) matchBind(patt Pattern, specimen interface{}, ej Any) erro
 		}
 		// semantics could be clearer that we use the same ejector below.
 		return ctx.matchBind(it.patt, newSpec, ej)
+	case *ListPatt:
+		// Kernel list patterns have no tail
+		l, err := unwrapList(specimen)
+		if err != nil {
+			problem := &StrObj{err.Error()}
+			_, err := ctx.throw.Eject(ctx.patternFailure, problem)
+			return err
+		}
+		if len(l) != len(it.items) {
+			problem := &StrObj{
+				fmt.Sprintf("Failed list pattern (needed %v, got %v)",
+					len(it.items), len(l))}
+			_, err := ctx.throw.Eject(ctx.patternFailure, problem)
+			return err
+		}
+		for ix, patt := range it.items {
+			err := ctx.matchBind(patt, l[ix], ej)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 	return fmt.Errorf("@@matchBind not implmented for %v", patt)
 }
