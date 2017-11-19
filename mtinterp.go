@@ -40,7 +40,7 @@ func MCall(rx interface{}, verb string, args []interface{}, nargs []NamedArg) (i
 	}
 
 	value := reflect.ValueOf(rx)
-	fn := value.MethodByName(strings.Title(verb))  // KLUDGE: go exports are capitalized
+	fn := value.MethodByName(strings.Title(verb)) // KLUDGE: go exports are capitalized
 	if !fn.IsValid() {
 		return nil, fmt.Errorf("@@refused: %v.%v(%v %v)", rx, verb, args, nargs)
 	}
@@ -58,7 +58,7 @@ func MCall(rx interface{}, verb string, args []interface{}, nargs []NamedArg) (i
 		return nil, fmt.Errorf("expected (interface{}, error) got: %v", results)
 	}
 	result := results[0].Interface()
-	if ! results[1].IsNil() {
+	if !results[1].IsNil() {
 		err = results[1].Interface().(error)
 	}
 	return result, err
