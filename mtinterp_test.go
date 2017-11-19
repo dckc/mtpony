@@ -11,10 +11,13 @@ import (
 func ExampleObjectExpr() {
 	// Output:
 	// object x {
+	//    ""
 	//   method a(n) {
+	//    ""
 	//     n.add(x.b(n))
 	//   }
 	//   method b(n) {
+	//    ""
 	//     n.subtract(2)
 	//   }
 	// }
@@ -30,9 +33,10 @@ func ExampleObjectExpr() {
 	bodyB := CallExpr{&NounExpr{"n"}, "subtract", []Expr{&l2},
 		[]NamedExpr{}}
 	nPatt := FinalPatt{"n", nil}
-	ma := Method{"a", []Pattern{&nPatt}, nil, nil, &bodyA}
-	mb := Method{"b", []Pattern{&nPatt}, nil, nil, &bodyB}
-	o1 := ObjectExpr{&FinalPatt{"x", nil}, nil, []Method{ma, mb}}
+	noDoc := &StrObj{""}
+	ma := Method{noDoc, "a", []Pattern{&nPatt}, nil, nil, &bodyA}
+	mb := Method{noDoc, "b", []Pattern{&nPatt}, nil, nil, &bodyB}
+	o1 := ObjectExpr{noDoc, &FinalPatt{"x", nil}, nil, []Method{ma, mb}}
 	l3 := IntLit{3}
 	c3 := CallExpr{&NounExpr{"x"}, "a", []Expr{&l3},
 		[]NamedExpr{}}

@@ -443,9 +443,6 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 			if err != nil {
 				return nil, err
 			}
-			if doc != "" {
-				log.Printf("WARNING! object doc not implemented: %q", doc)
-			}
 			name, err := nextPatt()
 			if err != nil {
 				return nil, err
@@ -475,15 +472,12 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 			if err = skipSpan(); err != nil {
 				return nil, err
 			}
-			pushExpr(&ObjectExpr{name, asExpr, methods})
+			pushExpr(&ObjectExpr{&StrObj{doc}, name, asExpr, methods})
 
 		case 'M':
 			doc, err := nextStr()
 			if err != nil {
 				return nil, err
-			}
-			if doc != "" {
-				log.Printf("WARNING! method doc not implemented: %q", doc)
 			}
 			verb, err := nextStr()
 			if err != nil {
@@ -508,7 +502,7 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 			if err = skipSpan(); err != nil {
 				return nil, err
 			}
-			pushExpr(&Method{verb, params, namedParams, guard, body})
+			pushExpr(&Method{&StrObj{doc}, verb, params, namedParams, guard, body})
 
 		case 'X':
 			if err = skipSpan(); err != nil {

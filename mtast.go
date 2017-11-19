@@ -75,7 +75,7 @@ type MetaContextExpr struct {
 }
 
 type ObjectExpr struct {
-	// doc string
+	doc    Expr
 	name   Pattern
 	asExpr Expr
 	//implements []Expr
@@ -84,7 +84,7 @@ type ObjectExpr struct {
 }
 
 type Method struct {
-	// doc string
+	doc         Expr
 	verb        string
 	params      []Pattern
 	namedParams []NamedPattern
@@ -191,9 +191,10 @@ func printMethods(sep string, items ...Method) string {
 }
 
 func (oe *ObjectExpr) String() string {
-	return fmt.Sprintf("object %s%s {\n  %s\n}",
+	return fmt.Sprintf("object %s%s {%s\n  %s\n}",
 		oe.name,
 		optWithSigil(" as", oe.asExpr),
+		optWithSigil("\n  ", oe.doc),
 		printMethods("\n  ", oe.methods...))
 }
 
@@ -204,9 +205,11 @@ func optWithSigil(sigil string, expr Expr) string {
 	return sigil + " " + expr.String()
 }
 
-func (m Method) String() string {
-	return fmt.Sprintf("method %s(%s%s) {\n    %s\n  }", m.verb,
-		printPatts(", ", m.params...), printNamedPatts(", ", m.namedParams...), m.body)
+func (m *Method) String() string {
+	return fmt.Sprintf("method %s(%s%s) {%s\n    %s\n  }", m.verb,
+		printPatts(", ", m.params...), printNamedPatts(", ", m.namedParams...),
+		optWithSigil("\n  ", m.doc),
+		m.body)
 }
 
 func (expr *CallExpr) String() string {
