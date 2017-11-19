@@ -291,7 +291,7 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 				return nil, err
 			}
 
-			items[ix].default_, err = nextExprOpt()
+			items[ix].value, err = nextExprOpt()
 			if err != nil {
 				return nil, err
 			}

@@ -89,9 +89,9 @@ type Pattern interface {
 	String() string
 }
 type NamedPattern struct {
-	key      Expr
-	patt     Pattern
-	default_ Expr
+	key   Expr
+	patt  Pattern
+	value Expr
 }
 
 type FinalPatt struct {
@@ -165,9 +165,9 @@ func printNamedPatts(sep string, items ...NamedPattern) string {
 
 	parts := make([]string, len(items))
 	for ix, item := range items {
-		if item.default_ != nil {
+		if item.value != nil {
 			parts[ix] = fmt.Sprintf("%v => %v := %v",
-				item.key, item.patt, item.default_)
+				item.key, item.patt, item.value)
 		} else {
 			parts[ix] = fmt.Sprintf("%v => %v",
 				item.key, item.patt)
@@ -193,9 +193,8 @@ func (oe *ObjectExpr) String() string {
 func optWithSigil(sigil string, expr Expr) string {
 	if expr == nil {
 		return ""
-	} else {
-		return sigil + " " + expr.String()
 	}
+	return sigil + " " + expr.String()
 }
 
 func (m Method) String() string {

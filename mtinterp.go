@@ -32,8 +32,8 @@ func (obj *UserObject) String() string {
 	return fmt.Sprintf("<%v>", obj.code.name)
 }
 
-func M_call(rx interface{}, verb string, args []interface{}, nargs []NamedArg) (interface{}, error) {
-	log.Printf("M_call: %v.%v(%v %v)", rx, verb, args, nargs)
+func MCall(rx interface{}, verb string, args []interface{}, nargs []NamedArg) (interface{}, error) {
+	log.Printf("MCall: %v.%v(%v %v)", rx, verb, args, nargs)
 	switch obj := rx.(type) {
 	case *UserObject:
 		return obj.recv(verb, args, nargs)
@@ -45,7 +45,7 @@ func M_call(rx interface{}, verb string, args []interface{}, nargs []NamedArg) (
 		return nil, fmt.Errorf("@@refused: %v.%v(%v %v)", rx, verb, args, nargs)
 	}
 	if len(nargs) > 0 {
-		panic("named args not implemented for M_call")
+		panic("named args not implemented for MCall")
 	}
 	goArgs := make([]reflect.Value, len(args))
 	for ix, arg := range args {
@@ -123,7 +123,7 @@ func (ctx *evalCtx) run(expr Expr) (interface{}, error) {
 				return nil, err
 			}
 		}
-		return M_call(rx, it.verb, params, []NamedArg{})
+		return MCall(rx, it.verb, params, []NamedArg{})
 
 	case *SeqExpr:
 		var rv interface{}
