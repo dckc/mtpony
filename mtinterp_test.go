@@ -37,8 +37,8 @@ func ExampleObjectExpr() {
 
 	fmt.Println(&o1)
 
-	e := evalCtx{make(map[string]interface{}), nil}
-	result, err := e.run(&o1)
+	emptyScope := make(map[string]interface{})
+	result, err := Evaluate(&o1, emptyScope)
 	if err != nil {
 		fmt.Println(err)
 	} else {
@@ -46,7 +46,7 @@ func ExampleObjectExpr() {
 	}
 
 	fmt.Println(&c3)
-	result, err = e.run(&c3)
+	result, err = Evaluate(&c3, emptyScope)
 	if err != nil {
 		fmt.Println(err)
 	} else {
@@ -61,8 +61,7 @@ func ExampleMASTDef() {
 	input := bytes.NewReader([]byte(brot1))
 	expr, err := Load(input)
 	fmt.Printf("expr: %v\n", expr)
-	interp := evalCtx{map[string]interface{}{}, nil}
-	result, err := interp.run(expr)
+	result, err := Evaluate(expr, map[string]interface{}{})
 	fmt.Printf("result: %v err: %v\n", result, err)
 }
 
@@ -88,22 +87,19 @@ func ExampleModule() {
 
 	// fmt.Printf("expr: %v\n", expr)
 	safeScope := map[string]interface{}{} // TODO
-	interp := evalCtx{safeScope, nil}
-	module, err := interp.run(expr)
+	module, err := Evaluate(expr, safeScope)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	package_1 := Package{}
-	moduleRunner := evalCtx{
-		map[string]interface{}{
-			"brot":      module,
-			"package_1": &package_1},
-		nil}
-	runModule := CallExpr{&NounExpr{"brot"}, "run", []Expr{&NounExpr{"package_1"}},
+	package1 := Package{&fileRead{".", os.Open}}
+	scope1 := map[string]interface{}{
+		"brot":     module,
+		"package1": &package1}
+	runModule := CallExpr{&NounExpr{"brot"}, "run", []Expr{&NounExpr{"package1"}},
 		[]NamedExpr{}}
-	result, err := moduleRunner.run(&runModule)
+	result, err := Evaluate(&runModule, scope1)
 	if err != nil {
 		fmt.Println(err)
 		return

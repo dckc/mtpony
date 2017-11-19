@@ -8,9 +8,9 @@ import (
 	"strings"
 )
 
-type Evaluator interface {
-	run(expr Expr) (interface{}, error)
-	matchBind(patt Pattern, val interface{}) error // TODO: ejector
+func Evaluate(expr Expr, scope map[string]interface{}) (interface{}, error) {
+	interp := evalCtx{scope, nil}
+	return interp.run(expr)
 }
 
 type evalCtx struct {
