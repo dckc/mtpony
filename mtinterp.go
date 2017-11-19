@@ -70,7 +70,11 @@ func (f *Thrower) String() string {
 }
 
 func (f *Thrower) Run(payload Any) (Any, error) {
-	return nil, fmt.Errorf("@@throw(%v)", payload)
+	return nil, fmt.Errorf("@@TODO: throw(%v)", payload)
+}
+
+func (f *Thrower) Eject(ej Any, payload Any) (Any, error) {
+	return nil, fmt.Errorf("@@TODO: throw.eject(%v, %v)", ej, payload)
 }
 
 func MCall(rx interface{}, verb string, args []Any, nargs []NamedArg) (interface{}, error) {
@@ -250,7 +254,7 @@ func (ctx *evaluator) matchBind(patt Pattern, specimen interface{}, ej Any) erro
 			return err
 		}
 		// semantics could be clearer that we use the same ejector below.
-		ctx.matchBind(it.patt, newSpec, ej)
+		return ctx.matchBind(it.patt, newSpec, ej)
 	}
 	return fmt.Errorf("@@matchBind not implmented for %v", patt)
 }

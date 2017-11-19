@@ -16,6 +16,8 @@ type ReadAccess interface {
 }
 
 func MakeSafeScope() Scope {
+	throw := &Thrower{}
+
 	return Scope{
 		"null":              &NullObj{},
 		"true":              &BoolObj{true},
@@ -24,7 +26,8 @@ func MakeSafeScope() Scope {
 		"Double":            &DoubleGuard{},
 		"_makeList":         &ListMaker{},
 		"_makeMap":          &MapMaker{},
-		"throw":             &Thrower{},
+		"throw":             throw,
+		"_mapExtract":       &MapExtractObj{throw},
 		"_makeProtocolDesc": &Stub{"_makeProtocolDesc"},
 		"_makeMessageDesc":  &Stub{"_makeMessageDesc"},
 		"_makeParamDesc":    &Stub{"_makeParamDesc"},
