@@ -44,7 +44,8 @@ func MCall(rx interface{}, verb string, args []interface{}, nargs []NamedArg) (i
 	value := reflect.ValueOf(rx)
 	fn := value.MethodByName(strings.Title(verb)) // KLUDGE: go exports are capitalized
 	if !fn.IsValid() {
-		return nil, fmt.Errorf("@@refused: %v.%v(%v %v)", rx, verb, args, nargs)
+		return nil, fmt.Errorf("@@refused: %v.%v(%v %v) (%v)", rx, verb, args, nargs,
+			strings.Title(verb))
 	}
 	if len(nargs) > 0 {
 		panic("named args not implemented for MCall")
@@ -147,7 +148,10 @@ func (ctx *scopeStack) run(expr Expr) (interface{}, error) {
 			return nil, err
 		}
 		return &obj, nil
+	case *MetaContextExpr:
+		return &MetaContextObj{}, nil
 	}
+
 	return nil, fmt.Errorf("@@eval not implemented for %v", expr)
 }
 
@@ -184,4 +188,16 @@ func (ctx *scopeStack) matchBind(patt Pattern, specimen interface{}) error {
 		return nil
 	}
 	return fmt.Errorf("@@matchBind not implmented for %v", patt)
+}
+
+type MetaContextObj struct {
+}
+
+func (*MetaContextObj) String() string {
+	return "<context of @@...>"
+}
+
+func (*MetaContextObj) GetFQNPrefix() (Any, error) {
+	log.Printf("WARNING! getFQNPrefix not implemented for meta.context()")
+	return &StrObj{"@@prefix"}, nil
 }

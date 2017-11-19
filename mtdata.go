@@ -5,6 +5,18 @@ import (
 	"fmt"
 )
 
+type Any interface{}
+
+type AnyGuard struct {
+}
+
+type NullObj struct {
+}
+
+type BoolObj struct {
+	value bool
+}
+
 type IntObj struct {
 	value int64 // TODO: bignum
 }
@@ -12,6 +24,20 @@ type StrObj struct {
 	value string
 }
 
+type DoubleGuard struct {
+}
+
+func (guard *AnyGuard) String() string {
+	return "Any"
+}
+
+func (it *NullObj) String() string {
+	return "null"
+}
+
+func (it *BoolObj) String() string {
+	return fmt.Sprintf("%v", it.value) // TODO: test
+}
 
 func (it *IntObj) String() string {
 	return fmt.Sprintf("%v", it.value)
@@ -33,7 +59,6 @@ func (it *IntObj) Subtract(j interface{}) (interface{}, error) {
 	return &IntObj{it.value - that}, nil
 }
 
-
 func unwrapInt(obj interface{}) (int64, error) {
 	switch it := obj.(type) {
 	case *IntObj:
@@ -42,12 +67,15 @@ func unwrapInt(obj interface{}) (int64, error) {
 	return 0, errors.New("@@not an Int")
 }
 
+func (guard *DoubleGuard) String() string {
+	return "Double"
+}
 
 func (it *StrObj) String() string {
 	return fmt.Sprintf("%q", it.value)
 }
 
-func (it *StrObj) add(s []interface{}) (interface{}, error) {
+func (it *StrObj) Add(s interface{}) (interface{}, error) {
 	that, err := unwrapStr(s)
 	if err != nil {
 		return nil, err
