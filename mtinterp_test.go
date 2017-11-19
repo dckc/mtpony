@@ -3,7 +3,9 @@ package monte
 import (
 	"bytes"
 	"fmt"
-	"log"
+	"io"
+	"os"
+	"path"
 )
 
 func ExampleObjectExpr() {
@@ -65,18 +67,6 @@ func ExampleMASTDef() {
 	fmt.Printf("result: %v err: %v\n", result, err)
 }
 
-type Package struct {
-}
-
-func (pkg *Package) Import(petname interface{}) (interface{}, error) {
-	log.Printf("import: %v", petname)
-	return nil, fmt.Errorf("@@import: sad trombone.")
-}
-
-func (pkg *Package) String() string {
-	return "<package>"
-}
-
 func ExampleModule() {
 	input := bytes.NewReader([]byte(brot2))
 	expr, err := Load(input)
@@ -93,6 +83,7 @@ func ExampleModule() {
 		return
 	}
 
+	// KLUDGE: Using os.Open makes this an integration test, not a unit test.
 	package1 := Package{&fileRead{".", os.Open}}
 	scope1 := map[string]interface{}{
 		"brot":     module,
@@ -107,4 +98,18 @@ func ExampleModule() {
 	fmt.Printf("result: %v err: %v\n", result, err)
 	// Output:
 	// X
+}
+
+type fileRead struct {
+	path string
+	open func(path string) (*os.File, error)
+}
+
+func (rd *fileRead) Open() (io.Reader, error) {
+	return rd.open(rd.path)
+}
+
+func (rd *fileRead) Join(other ...string) ReadAccess {
+	parts := append([]string{rd.path}, other...)
+	return &fileRead{path.Join(parts...), rd.open}
 }
