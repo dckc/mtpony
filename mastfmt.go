@@ -58,6 +58,10 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 
 	// TODO: actually handle spans
 	skipSpan := func() error {
+		if version == 0 {
+			return nil
+		}
+
 		if _, err := input.ReadByte(); err != nil {
 			return err
 		}
