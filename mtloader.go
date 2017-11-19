@@ -1,8 +1,8 @@
 package monte
 
 import (
-	"log"
 	"io"
+	"log"
 )
 
 // ReadAccess is an interface to read a file or collection of files.
@@ -15,9 +15,16 @@ type ReadAccess interface {
 	Join(other ...string) ReadAccess
 }
 
+func MakeSafeScope() Scope {
+	return Scope{
+		"_makeList": &ListMaker{},
+	}
+}
+
 // Package provides the import method used by Monte modules.
 type Package struct {
-	modules ReadAccess
+	modules   ReadAccess
+	safeScope Scope
 }
 
 func (pkg *Package) Import(petname interface{}) (interface{}, error) {
@@ -35,8 +42,7 @@ func (pkg *Package) Import(petname interface{}) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	safeScope := map[string]interface{}{} // TODO
-	module, err := Evaluate(modAST, safeScope)
+	module, err := Evaluate(modAST, pkg.safeScope)
 	if err != nil {
 		return nil, err
 	}
