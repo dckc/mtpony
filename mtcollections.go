@@ -47,22 +47,39 @@ func (*MapMaker) String() string {
 	return "_makeMap"
 }
 
-func (*MapMaker) FromPairs(pairs ...Any) (Any, error) {
-	keys := make([]Any, len(pairs))
-	m := make(map[Any]Any)
-	for ix, pair := range pairs {
-		switch keyValue := pair.(type) {
-		case *ConstList:
-			if len(keyValue.objs) != 2 {
-				return nil, fmt.Errorf("bad pair length: %v", keyValue)
-			}
-			key := keyValue.objs[0]
-			value := keyValue.objs[1]
-			keys[ix] = key
-			m[key] = value
-		default:
-			return nil, fmt.Errorf("pair must be ConstList: %v", pair)
-		}
+func (m *ConstMap) String() string {
+	parts := make([]string, len(m.objectMap))
+	for ix, key := range m.keys.objs {
+		parts[ix] = fmt.Sprintf("%s => %s", key, m.objectMap[key])
 	}
-	return &ConstMap{m, &ConstList{keys}}, nil
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+func (*MapMaker) FromPairs(arg Any) (Any, error) {
+	switch pairs := arg.(type) {
+	case *ConstList:
+		keys := make([]Any, len(pairs.objs))
+		m := make(map[Any]Any)
+		for ix, pair := range pairs.objs {
+			switch keyValue := pair.(type) {
+			case *ConstList:
+				if len(keyValue.objs) != 2 {
+					return nil, fmt.Errorf("bad pair length: %v", keyValue)
+				}
+				key := keyValue.objs[0]
+				value := keyValue.objs[1]
+				// log.Printf("map key: %v / value: %v", key, value)
+				keys[ix] = key
+				// TODO: check settledness
+				m[key] = value
+			default:
+				return nil, fmt.Errorf("pair must be ConstList: %v", pair)
+			}
+		}
+		value := &ConstMap{m, &ConstList{keys}}
+		// log.Printf("made map: %v (%v / %v)", value, m, keys)
+		return value, nil
+	default:
+		return nil, fmt.Errorf("arg be ConstList: %v", arg)
+	}
 }
