@@ -9,6 +9,10 @@ type Expr interface {
 	String() string
 }
 
+type CharLit struct {
+	value rune
+}
+
 type IntLit struct {
 	value int64 // TODO: bignum
 }
@@ -257,6 +261,10 @@ func (expr *BindingExpr) String() string {
 
 func (expr *MetaContextExpr) String() string {
 	return "meta.context()"
+}
+
+func (expr *CharLit) String() string {
+	return fmt.Sprintf("%q", expr.value) // TODO: test
 }
 
 func (expr *IntLit) String() string {

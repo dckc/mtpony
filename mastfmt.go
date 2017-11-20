@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"unicode/utf8"
 )
 
 // MAGIC marks a Monte AST file.
@@ -117,6 +118,34 @@ func (ctx *context) decode(input *bufio.Reader, version byte) (Expr, error) {
 		switch tag {
 		case 'N':
 			pushExpr(nil)
+		case 'C':
+			buf := make([]byte, 0)
+			// Read bytes until we have a complete
+			// utf8-encoding of a character.
+			var r rune
+			done := false
+			for !done && len(buf) < 6 {
+				b, err := input.ReadByte()
+				if err != nil {
+					return err
+				}
+				buf = append(buf, b)
+				if len(buf) == 3 &&
+					buf[0] == 0xef &&
+					buf[1] == 0xbf &&
+					buf[2] == 0xbd {
+					r = '\uFFFD'
+					done = true
+				} else {
+					r, _ := utf8.DecodeRune(buf)
+					if r != utf8.RuneError {
+						done = true
+					}
+				}
+				log.Printf("@@char buf: %v rune: %v",
+					buf, r)
+			}
+			pushExpr(&CharLit{r})
 		case 'I':
 			value, err := binary.ReadVarint(input)
 			if err != nil {

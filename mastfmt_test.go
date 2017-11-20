@@ -4,7 +4,17 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
+
+// Confirm that '\x00' is OK in golang.
+func ExampleChar0() {
+	buf := []byte{0}
+	r, size := utf8.DecodeRune(buf)
+	fmt.Printf("rune: %v size: %v", r, size)
+	// Output:
+	// rune: 0 size: 1
+}
 
 func ExampleMAGIC() {
 	// Output:
