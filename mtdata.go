@@ -83,6 +83,10 @@ func (it *StrObj) Add(s interface{}) (interface{}, error) {
 	return &StrObj{it.value + that}, nil
 }
 
+func wrapStr(s string) *StrObj {
+	return &StrObj{s}
+}
+
 func unwrapStr(obj interface{}) (string, error) {
 	switch it := obj.(type) {
 	case *StrObj:

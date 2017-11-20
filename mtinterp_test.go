@@ -88,7 +88,7 @@ func ExampleModule() {
 	}
 
 	// KLUDGE: Using os.Open makes this an integration test, not a unit test.
-	package1 := Package{&fileRead{".", os.Open}, safeScope}
+	package1 := Package{&fileRead{".", os.Open}, safeScope, nil}
 	scope1 := map[string]interface{}{
 		"brot":     module,
 		"package1": &package1}
@@ -102,6 +102,39 @@ func ExampleModule() {
 	fmt.Printf("result: %v err: %v\n", result, err)
 	// Output:
 	// result: ["brotCount" => <brotCount>] err: <nil>
+}
+
+func ExampleBenchModule() {
+	input := bytes.NewReader([]byte(brot))
+	expr, err := Load(input)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	// fmt.Printf("expr: %v\n", expr)
+	safeScope := MakeSafeScope()
+	module, err := Evaluate(expr, safeScope)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	// KLUDGE: Using os.Open makes this an integration test, not a unit test.
+	package1 := Package{&fileRead{".", os.Open}, safeScope, nil}
+	scope1 := map[string]interface{}{
+		"brot":     module,
+		"package1": &package1}
+	runModule := CallExpr{&NounExpr{"brot"}, "run", []Expr{&NounExpr{"package1"}},
+		[]NamedExpr{}}
+	result, err := Evaluate(&runModule, scope1)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Printf("result: %v err: %v\n", result, err)
+	// Output:
+	// result: ["main" => <main>] err: <nil>
 }
 
 type fileRead struct {

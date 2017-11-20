@@ -97,6 +97,19 @@ func (*MapMaker) FromPairs(arg Any) (Any, error) {
 	return value, nil
 }
 
+func mkMap(parts ...Any) *ConstMap {
+	keys := make([]Any, len(parts) / 2)
+	values := make([]Any, len(parts) / 2)
+	for ix, part := range parts {
+		if ix % 2 == 0 {
+			keys[ix / 2] = part
+		} else {
+			values[ix / 2] = part
+		}
+	}
+	return &ConstMap{&ConstList{keys}, &ConstList{values}}
+}
+
 func unwrapMap(specimen Any) (*ConstMap, error) {
 	switch m := specimen.(type) {
 	case *ConstMap:

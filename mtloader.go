@@ -38,6 +38,7 @@ func MakeSafeScope() Scope {
 type Package struct {
 	modules   ReadAccess
 	safeScope Scope
+	benches   []Any
 }
 
 func (pkg *Package) Import(petname interface{}) (interface{}, error) {
@@ -47,6 +48,12 @@ func (pkg *Package) Import(petname interface{}) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if petnameStr == "bench" {
+		// ISSUE: benchCollector from what module?
+		return mkMap(wrapStr("bench"), &benchCollector{pkg}), nil
+	}
+
 	modRd, err := pkg.modules.Join(petnameStr + ".mast").Open()
 	if err != nil {
 		return nil, err
@@ -71,4 +78,27 @@ func (pkg *Package) Import(petname interface{}) (interface{}, error) {
 
 func (pkg *Package) String() string {
 	return "<package>"
+}
+
+type benchCollector struct {
+	pkg *Package
+}
+
+func (b *benchCollector) String() string {
+	return "<benchCollector>"
+}
+
+func (b *benchCollector) Run(aBench Any, name Any) (Any, error) {
+	nameStr, err := unwrapStr(name)
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("WARNING: not saving bench name %v", nameStr)
+	pkg := b.pkg
+	if pkg.benches == nil {
+		pkg.benches = []Any{aBench}
+	} else {
+		pkg.benches = append(pkg.benches, aBench)
+	}
+	return pkg.safeScope["null"], nil
 }
